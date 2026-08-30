@@ -1,0 +1,21 @@
+<Project>
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+
+        <DisableTransitiveProjectReferences>true</DisableTransitiveProjectReferences>
+        <EmitCompilerGeneratedFiles>true</EmitCompilerGeneratedFiles>
+        <CompileUsingReferenceAssemblies>false</CompileUsingReferenceAssemblies>
+
+        <GenerateDocumentationFile>true</GenerateDocumentationFile>
+        <Deterministic>true</Deterministic>
+        <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
+
+        <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+        <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+        <AnalysisLevel>latest</AnalysisLevel>
+        <NoWarn>$(NoWarn);NU1507</NoWarn>
+        <NoWarn>$(NoWarn);CS1591</NoWarn>
+    </PropertyGroup>
+</Project>

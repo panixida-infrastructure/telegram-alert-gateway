@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+    <ItemGroup>
+        <PackageReference Include="Npgsql" />
+        <PackageReference Include="PANiXiDA.Core.Application" />
+        <PackageReference Include="PANiXiDA.Core.ResultPattern" />
+        <PackageReference Include="Respawn" />
+        <PackageReference Include="Shouldly" />
+        <PackageReference Include="Testcontainers.PostgreSql" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <Using Include="PANiXiDA.Core.ResultPattern" />
+        <Using Include="PANiXiDA.Core.Application.Persistence" />
+        <Using Include="PANiXiDA.Core.Application.Querying.Pagination" />
+
+        <Using Include="Shouldly" />
+    </ItemGroup>
+</Project>

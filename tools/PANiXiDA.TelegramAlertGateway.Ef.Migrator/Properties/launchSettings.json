@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "Ef.Migrator": {
+      "commandName": "Project"
+    },
+    "Container (Dockerfile)": {
+      "commandName": "Docker"
+    }
+  }
+}

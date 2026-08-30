@@ -1,0 +1,35 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+    <ItemGroup>
+      <PackageReference Include="PANiXiDA.Core.Application" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\PANiXiDA.TelegramAlertGateway.Notifications.Domain\PANiXiDA.TelegramAlertGateway.Notifications.Domain.csproj" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <Using Include="PANiXiDA.Core.ResultPattern" />
+
+        <Using Include="PANiXiDA.Core.Domain" />
+        <Using Include="PANiXiDA.Core.Domain.AggregateRoots" />
+        <Using Include="PANiXiDA.Core.Domain.DomainEvents" />
+        <Using Include="PANiXiDA.Core.Domain.Entities" />
+
+        <Using Include="PANiXiDA.Core.Application.Persistence" />
+        <Using Include="PANiXiDA.Core.Application.Querying.Filtering" />
+        <Using Include="PANiXiDA.Core.Application.Querying.Pagination" />
+        <Using Include="PANiXiDA.Core.Application.Querying.Sorting" />
+        <Using Include="PANiXiDA.Core.Application.Messaging.EventBus.Handlers" />
+        <Using Include="PANiXiDA.Core.Application.Messaging.Mediator.Handlers" />
+        <Using Include="PANiXiDA.Core.Application.Messaging.Mediator.Contracts" />
+        <Using Include="PANiXiDA.Core.Application.Validation" />
+
+        <Using Include="PANiXiDA.Core.SpecificationPattern.Abstractions" />
+        <Using Include="PANiXiDA.Core.SpecificationPattern.Core" />
+        <Using Include="PANiXiDA.Core.SpecificationPattern.Extensions" />
+        <Using Include="PANiXiDA.Core.SpecificationPattern.Factories" />
+
+        <Using Include="FluentValidation" />
+    </ItemGroup>
+</Project>

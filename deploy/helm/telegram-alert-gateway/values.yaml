@@ -1,0 +1,96 @@
+replicaCount: 1
+
+nameOverride: telegram-alert-gateway
+fullnameOverride: telegram-alert-gateway
+
+image:
+  repository: ghcr.io/panixida-infrastructure/telegram-alert-gateway/api
+  pullPolicy: IfNotPresent
+  tag: "0"
+
+imagePullSecrets: []
+
+serviceAccount:
+  create: true
+  name: telegram-alert-gateway
+  automountServiceAccountToken: false
+
+service:
+  type: ClusterIP
+  port: 80
+  containerPort: 8080
+
+env:
+  secretName: telegram-alert-gateway-env
+  values:
+    ASPNETCORE_HTTP_PORTS: "8080"
+    OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector.observability.svc.cluster.local:4317
+    OTEL_EXPORTER_OTLP_PROTOCOL: grpc
+    OTEL_SERVICE_NAME: telegram-alert-gateway
+
+externalSecrets:
+  enabled: false
+
+migrations:
+  enabled: true
+  syncWave: "-5"
+  image:
+    repository: ghcr.io/panixida-infrastructure/telegram-alert-gateway/ef-migrator
+    pullPolicy: IfNotPresent
+    tag: "0"
+  envSecretName: telegram-alert-gateway-env
+  backoffLimit: 3
+  activeDeadlineSeconds: 600
+  ttlSecondsAfterFinished: 86400
+  resources:
+    requests:
+      cpu: 25m
+      memory: 96Mi
+    limits:
+      memory: 192Mi
+
+gateway:
+  enabled: false
+
+podAnnotations: {}
+
+podLabels:
+  app.kubernetes.io/part-of: observability
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+  readOnlyRootFilesystem: false
+  runAsNonRoot: true
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 128Mi
+  limits:
+    memory: 384Mi
+
+probes:
+  startup:
+    enabled: true
+    httpGet:
+      path: /health/live
+      port: http
+    failureThreshold: 30
+    periodSeconds: 5
+  readiness:
+    enabled: true
+    httpGet:
+      path: /health/ready
+      port: http
+    initialDelaySeconds: 5
+    periodSeconds: 10
+  liveness:
+    enabled: true
+    httpGet:
+      path: /health/live
+      port: http
+    initialDelaySeconds: 30
+    periodSeconds: 20

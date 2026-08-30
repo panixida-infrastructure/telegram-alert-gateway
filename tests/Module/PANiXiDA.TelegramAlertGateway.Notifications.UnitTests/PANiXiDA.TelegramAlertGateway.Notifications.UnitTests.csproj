@@ -1,0 +1,32 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+    <PropertyGroup>
+        <OutputType>Exe</OutputType>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Shouldly" />
+        <PackageReference Include="Microsoft.Testing.Extensions.CodeCoverage" />
+        <PackageReference Include="Microsoft.Testing.Extensions.TrxReport" />
+        <PackageReference Include="xunit.v3.mtp-v2" />
+        <PackageReference Include="NSubstitute" />
+        <PackageReference Include="NSubstitute.Analyzers.CSharp" PrivateAssets="all" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\..\..\src\Module\PANiXiDA.TelegramAlertGateway.Notifications.Application\PANiXiDA.TelegramAlertGateway.Notifications.Application.csproj" />
+        <ProjectReference Include="..\..\..\src\Module\PANiXiDA.TelegramAlertGateway.Notifications.Domain\PANiXiDA.TelegramAlertGateway.Notifications.Domain.csproj" />
+        <ProjectReference Include="..\..\PANiXiDA.TelegramAlertGateway.Testing\PANiXiDA.TelegramAlertGateway.Testing.csproj" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <Using Include="PANiXiDA.Core.ResultPattern" />
+        <Using Include="PANiXiDA.Core.Application.Querying.Pagination" />
+        <Using Include="PANiXiDA.Core.Application.Querying.Sorting" />
+
+        <Using Include="PANiXiDA.TelegramAlertGateway.Testing.Assertions" />
+
+        <Using Include="NSubstitute" />
+        <Using Include="Shouldly" />
+        <Using Include="Xunit" />
+    </ItemGroup>
+</Project>

@@ -1,0 +1,85 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [ main, development ]
+    paths-ignore:
+      - deploy/helm/**/images-*.yaml
+
+jobs:
+  format:
+    uses: PANiXiDA-Infrastructure/ci-cd/.github/workflows/dotnet-format.yml@main
+    secrets:
+      registry-user: ${{ secrets.REGISTRY_USER }}
+      registry-token: ${{ secrets.REGISTRY_TOKEN }}
+
+  tests:
+    uses: PANiXiDA-Infrastructure/ci-cd/.github/workflows/dotnet-tests.yml@main
+    secrets:
+      registry-user: ${{ secrets.REGISTRY_USER }}
+      registry-token: ${{ secrets.REGISTRY_TOKEN }}
+
+  sonar:
+    if: ${{ always() && needs.tests.result != 'cancelled' }}
+    needs: tests
+    uses: PANiXiDA-Infrastructure/ci-cd/.github/workflows/dotnet-sonar.yml@main
+    with:
+      project-key: ${{ vars.SONAR_PROJECT_KEY }}
+    secrets:
+      sonar-token: ${{ secrets.SONAR_TOKEN }}
+      registry-user: ${{ secrets.REGISTRY_USER }}
+      registry-token: ${{ secrets.REGISTRY_TOKEN }}
+
+  helm:
+    uses: PANiXiDA-Infrastructure/ci-cd/.github/workflows/helm-validation.yml@main
+    with:
+      chart-repository: PANiXiDA-Infrastructure/ci-cd
+      chart-ref: main
+      helm-chart-path: charts/application
+      values-path: ${{ vars.HELM_VALUES_PATH }}
+      common-values-file: ${{ vars.HELM_COMMON_VALUES_FILE }}
+      development-release-name: ${{ vars.HELM_DEVELOPMENT_RELEASE_NAME }}
+      production-release-name: ${{ vars.HELM_PRODUCTION_RELEASE_NAME }}
+
+  resolve-env:
+    if: ${{ github.event_name != 'pull_request' && (github.ref_name == 'main' || github.ref_name == 'development') }}
+    uses: PANiXiDA-Infrastructure/ci-cd/.github/workflows/resolve-environment.yml@main
+
+  build-api:
+    if: ${{ github.event_name != 'pull_request' && (github.ref_name == 'main' || github.ref_name == 'development') }}
+    needs: [ format, tests, sonar, helm, resolve-env ]
+    uses: PANiXiDA-Infrastructure/ci-cd/.github/workflows/docker-build.yml@main
+    with:
+      service-folder: ${{ vars.SERVICE_FOLDER }}
+      image: |
+        ${{ vars.REGISTRY_URL }}/${{ github.repository }}/${{ vars.SERVICE_NAME }}:${{ github.run_number }}
+        ${{ vars.REGISTRY_URL }}/${{ github.repository }}/${{ vars.SERVICE_NAME }}:${{ needs.resolve-env.outputs.environment }}-${{ github.run_number }}
+    secrets:
+      registry-user: ${{ secrets.REGISTRY_USER }}
+      registry-token: ${{ secrets.REGISTRY_TOKEN }}
+
+  build-migrator:
+    if: ${{ github.event_name != 'pull_request' && (github.ref_name == 'main' || github.ref_name == 'development') }}
+    needs: [ format, tests, sonar, helm, resolve-env ]
+    uses: PANiXiDA-Infrastructure/ci-cd/.github/workflows/docker-build.yml@main
+    with:
+      service-folder: ${{ vars.MIGRATOR_FOLDER }}
+      image: |
+        ${{ vars.REGISTRY_URL }}/${{ github.repository }}/${{ vars.MIGRATOR_NAME }}:${{ github.run_number }}
+        ${{ vars.REGISTRY_URL }}/${{ github.repository }}/${{ vars.MIGRATOR_NAME }}:${{ needs.resolve-env.outputs.environment }}-${{ github.run_number }}
+    secrets:
+      registry-user: ${{ secrets.REGISTRY_USER }}
+      registry-token: ${{ secrets.REGISTRY_TOKEN }}
+
+
+  notify:
+    if: ${{ always() && github.event_name != 'pull_request' && (github.ref_name == 'main' || github.ref_name == 'development') }}
+    needs: [ build-api, build-migrator ]
+    uses: PANiXiDA-Infrastructure/ci-cd/.github/workflows/notify-telegram.yml@main
+    with:
+      event-name: ${{ github.event_name }}
+    secrets:
+      telegram-bot-token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      telegram-chat-id: ${{ vars.TELEGRAM_CHAT_ID }}
+      github-token: ${{ secrets.REGISTRY_TOKEN }}

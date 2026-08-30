@@ -1,0 +1,4 @@
+env:
+  values:
+    ASPNETCORE_ENVIRONMENT: Production
+    DOTNET_ENVIRONMENT: Production

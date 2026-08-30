@@ -1,0 +1,23 @@
+﻿<Project Sdk="Microsoft.NET.Sdk.Web">
+
+    <PropertyGroup>
+        <UserSecretsId>684902a4-1094-4cdd-8ca2-86ab4769faf9</UserSecretsId>
+        <DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
+        <DockerfileContext>..\..\..\..</DockerfileContext>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="PANiXiDA.Core.Observability" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\Module\PANiXiDA.TelegramAlertGateway.Notifications.Application\PANiXiDA.TelegramAlertGateway.Notifications.Application.csproj" />
+        <ProjectReference Include="..\Module\PANiXiDA.TelegramAlertGateway.Notifications.Domain\PANiXiDA.TelegramAlertGateway.Notifications.Domain.csproj" />
+        <ProjectReference Include="..\Module\PANiXiDA.TelegramAlertGateway.Notifications.Infrastructure\PANiXiDA.TelegramAlertGateway.Notifications.Infrastructure.csproj" />
+        <ProjectReference Include="..\Module\PANiXiDA.TelegramAlertGateway.Notifications.Presentation\PANiXiDA.TelegramAlertGateway.Notifications.Presentation.csproj" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <Using Include="PANiXiDA.Core.Observability" />
+    </ItemGroup>
+</Project>

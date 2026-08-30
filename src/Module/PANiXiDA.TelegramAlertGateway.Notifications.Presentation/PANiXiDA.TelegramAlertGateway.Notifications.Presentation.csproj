@@ -1,0 +1,31 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+    <ItemGroup>
+        <FrameworkReference Include="Microsoft.AspNetCore.App" PrivateAssets="all" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <PackageReference Include="PANiXiDA.Core.Presentation.Http" />
+        <PackageReference Include="Riok.Mapperly" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\PANiXiDA.TelegramAlertGateway.Notifications.Application\PANiXiDA.TelegramAlertGateway.Notifications.Application.csproj" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <InternalsVisibleTo Include="PANiXiDA.TelegramAlertGateway.Notifications.FunctionalTests" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <Using Include="PANiXiDA.Core.ResultPattern" />
+
+        <Using Include="PANiXiDA.Core.Application.Messaging.Mediator" />
+        <Using Include="PANiXiDA.Core.Application.Querying.Filtering" />
+        <Using Include="PANiXiDA.Core.Application.Querying.Pagination" />
+        <Using Include="PANiXiDA.Core.Application.Querying.Sorting" />
+
+        <Using Include="PANiXiDA.Core.Presentation.Http.DependencyInjection" />
+        <Using Include="PANiXiDA.Core.Presentation.Http.Endpoints" />
+        <Using Include="PANiXiDA.Core.Presentation.Http.Helpers" />
+    </ItemGroup>
+</Project>

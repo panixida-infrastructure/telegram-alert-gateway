@@ -1,0 +1,5 @@
+<Project>
+    <ItemGroup>
+        <PackageReference Update="Riok.Mapperly" PrivateAssets="all" />
+    </ItemGroup>
+</Project>
