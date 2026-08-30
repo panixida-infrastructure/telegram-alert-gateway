@@ -2,3 +2,5 @@ env:
   values:
     ASPNETCORE_ENVIRONMENT: Production
     DOTNET_ENVIRONMENT: Production
+    VictoriaLogs__Query: >-
+      severity_text:(i(error) OR i(fatal) OR i(critical)) OR severity:(i(error) OR i(fatal) OR i(critical)) OR level:(i(error) OR i(fatal) OR i(critical)) OR "log.level":(i(error) OR i(fatal) OR i(critical)) OR SeverityText:(i(error) OR i(fatal) OR i(critical)) OR LogLevel:(i(error) OR i(fatal) OR i(critical))
