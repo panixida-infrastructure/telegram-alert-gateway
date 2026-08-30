@@ -1,7 +1,10 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 
 using PANiXiDA.TelegramAlertGateway.Notifications.Domain.Notifications;
+using PANiXiDA.TelegramAlertGateway.Notifications.Infrastructure.Configuration;
 using PANiXiDA.TelegramAlertGateway.Notifications.Infrastructure.Persistence.Core;
 using PANiXiDA.TelegramAlertGateway.Notifications.Infrastructure.Persistence.Notifications;
 
@@ -52,6 +55,52 @@ public sealed class NotificationRetentionCleanerTests(IntegrationTestFixture fix
             CreateKey("recent-sent")
         ];
         remainingKeys.ShouldBe(expectedKeys.OrderBy(item => item));
+    }
+
+    [Fact(DisplayName = "Retention worker runs cleanup immediately on startup")]
+    public async Task StartAsync_Should_Run_Cleanup_Immediately()
+    {
+        var now = DateTimeOffset.UtcNow;
+        await using var scope = Fixture.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<NotificationsWriteDbContext>();
+        dbContext.Notifications.Add(CreateSent(
+            "worker-expired-sent",
+            now.AddDays(-16),
+            now.AddDays(-15)));
+        await dbContext.SaveChangesAsync(TestContext.Current.CancellationToken);
+        using var worker = new NotificationRetentionWorker(
+            scope.ServiceProvider.GetRequiredService<IServiceScopeFactory>(),
+            scope.ServiceProvider.GetRequiredService<TimeProvider>(),
+            scope.ServiceProvider.GetRequiredService<IOptions<NotificationRetentionOptions>>(),
+            NullLogger<NotificationRetentionWorker>.Instance);
+
+        await worker.StartAsync(TestContext.Current.CancellationToken);
+
+        try
+        {
+            var deleted = false;
+            for (var attempt = 0; attempt < 50; attempt++)
+            {
+                dbContext.ChangeTracker.Clear();
+                deleted = !await dbContext.Notifications
+                    .AsNoTracking()
+                    .AnyAsync(TestContext.Current.CancellationToken);
+                if (deleted)
+                {
+                    break;
+                }
+
+                await Task.Delay(
+                    TimeSpan.FromMilliseconds(50),
+                    TestContext.Current.CancellationToken);
+            }
+
+            deleted.ShouldBeTrue();
+        }
+        finally
+        {
+            await worker.StopAsync(TestContext.Current.CancellationToken);
+        }
     }
 
     private static Notification CreatePending(string key, DateTimeOffset createdAtUtc)

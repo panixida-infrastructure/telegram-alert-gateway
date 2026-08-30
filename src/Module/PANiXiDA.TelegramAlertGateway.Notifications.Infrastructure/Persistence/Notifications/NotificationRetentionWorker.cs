@@ -8,7 +8,7 @@ using PANiXiDA.TelegramAlertGateway.Notifications.Infrastructure.Telemetry;
 
 namespace PANiXiDA.TelegramAlertGateway.Notifications.Infrastructure.Persistence.Notifications;
 
-internal sealed class NotificationRetentionWorker(
+public sealed class NotificationRetentionWorker(
     IServiceScopeFactory scopeFactory,
     TimeProvider timeProvider,
     IOptions<NotificationRetentionOptions> options,
