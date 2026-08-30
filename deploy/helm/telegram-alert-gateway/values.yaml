@@ -8,7 +8,8 @@ image:
   pullPolicy: IfNotPresent
   tag: "0"
 
-imagePullSecrets: []
+imagePullSecrets:
+  - name: telegram-alert-gateway-registry
 
 serviceAccount:
   create: true
