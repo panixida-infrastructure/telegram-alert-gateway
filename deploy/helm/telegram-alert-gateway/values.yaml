@@ -76,6 +76,7 @@ resources:
 probes:
   startup:
     enabled: true
+    tcpSocket: null
     httpGet:
       path: /health/live
       port: http
@@ -83,6 +84,7 @@ probes:
     periodSeconds: 5
   readiness:
     enabled: true
+    tcpSocket: null
     httpGet:
       path: /health/ready
       port: http
@@ -90,6 +92,7 @@ probes:
     periodSeconds: 10
   liveness:
     enabled: true
+    tcpSocket: null
     httpGet:
       path: /health/live
       port: http
