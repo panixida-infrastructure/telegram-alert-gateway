@@ -83,7 +83,7 @@ public sealed class LogEventNormalizerTests(IntegrationTestFixture fixture)
         normalizer.Normalize(records).ShouldBeEmpty();
     }
 
-    private static IReadOnlyDictionary<string, string> CreateRecord(
+    private static Dictionary<string, string> CreateRecord(
         string timestamp,
         string message,
         string source)
