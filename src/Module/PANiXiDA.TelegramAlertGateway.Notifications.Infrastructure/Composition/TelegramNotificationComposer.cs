@@ -18,15 +18,18 @@ internal sealed class TelegramNotificationComposer(
     private const string Separator = "────────────";
     private const int MaxAlertBlockLength = 2600;
     private const int PageContentLimit = 3400;
+    private static readonly TimeSpan MetricDeliveryDeduplicationWindow = TimeSpan.FromMinutes(5);
 
     private readonly VictoriaLogsOptions _victoriaLogsOptions = victoriaLogsOptions.Value;
 
     public IReadOnlyList<ComposedNotification> ComposeMetricAlerts(
         string status,
         string externalUrl,
-        IReadOnlyList<AlertmanagerAlert> alerts)
+        IReadOnlyList<AlertmanagerAlert> alerts,
+        DateTimeOffset receivedAtUtc)
     {
         var result = new List<ComposedNotification>();
+        var deliveryWindow = receivedAtUtc.UtcTicks / MetricDeliveryDeduplicationWindow.Ticks;
 
         foreach (var topicGroup in alerts
                      .GroupBy(alert => topicRouter.Route(alert.Labels), StringComparer.Ordinal)
@@ -78,7 +81,7 @@ internal sealed class TelegramNotificationComposer(
                         alert.StartsAt.UtcTicks,
                         alert.EndsAt?.UtcTicks)));
                 var key = NotificationKeyFactory.Create(
-                    $"metric|{topicGroup.Key}|{normalizedStatus}|{alertOccurrences}|{index}");
+                    $"metric|{deliveryWindow}|{topicGroup.Key}|{normalizedStatus}|{alertOccurrences}|{index}");
 
                 result.Add(new ComposedNotification(key, topicGroup.Key, body.ToString()));
             }

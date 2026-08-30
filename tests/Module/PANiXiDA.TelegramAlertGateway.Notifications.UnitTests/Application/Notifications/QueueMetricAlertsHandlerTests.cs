@@ -19,7 +19,8 @@ public sealed class QueueMetricAlertsHandlerTests
         composer.ComposeMetricAlerts(
                 Arg.Any<string>(),
                 Arg.Any<string>(),
-                Arg.Any<IReadOnlyList<AlertmanagerAlert>>())
+                Arg.Any<IReadOnlyList<AlertmanagerAlert>>(),
+                Arg.Any<DateTimeOffset>())
             .Returns([item]);
         repository.ExistsByKeyAsync(item.Key, Arg.Any<CancellationToken>())
             .Returns(true);

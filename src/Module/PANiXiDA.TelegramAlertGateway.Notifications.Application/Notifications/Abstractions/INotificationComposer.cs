@@ -7,7 +7,8 @@ public interface INotificationComposer
     IReadOnlyList<ComposedNotification> ComposeMetricAlerts(
         string status,
         string externalUrl,
-        IReadOnlyList<AlertmanagerAlert> alerts);
+        IReadOnlyList<AlertmanagerAlert> alerts,
+        DateTimeOffset receivedAtUtc);
 
     ComposedNotification ComposeLogEvent(
         DateTimeOffset windowStartUtc,

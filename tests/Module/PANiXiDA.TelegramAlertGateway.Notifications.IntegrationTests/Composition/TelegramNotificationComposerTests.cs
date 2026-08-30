@@ -37,7 +37,8 @@ public sealed class TelegramNotificationComposerTests(IntegrationTestFixture fix
         var notifications = composer.ComposeMetricAlerts(
             "firing",
             "https://alertmanager.example",
-            alerts);
+            alerts,
+            DateTimeOffset.UtcNow);
         var rendered = string.Join('\n', notifications.Select(item => item.Message));
 
         notifications.Count.ShouldBeGreaterThan(1);
@@ -61,7 +62,11 @@ public sealed class TelegramNotificationComposerTests(IntegrationTestFixture fix
             CreateAlert("dotnet-template", "second")
         };
 
-        var notifications = composer.ComposeMetricAlerts("firing", string.Empty, alerts);
+        var notifications = composer.ComposeMetricAlerts(
+            "firing",
+            string.Empty,
+            alerts,
+            DateTimeOffset.UtcNow);
 
         notifications.Select(item => item.Topic)
             .Order(StringComparer.Ordinal)
@@ -85,7 +90,11 @@ public sealed class TelegramNotificationComposerTests(IntegrationTestFixture fix
         labels["service"] = conflictingService;
 
         var notification = composer
-            .ComposeMetricAlerts("firing", string.Empty, [alert with { Labels = labels }])
+            .ComposeMetricAlerts(
+                "firing",
+                string.Empty,
+                [alert with { Labels = labels }],
+                DateTimeOffset.UtcNow)
             .ShouldHaveSingleItem();
 
         notification.Topic.ShouldBe(owner);
@@ -98,15 +107,38 @@ public sealed class TelegramNotificationComposerTests(IntegrationTestFixture fix
         var composer = scope.ServiceProvider.GetRequiredService<INotificationComposer>();
         var first = CreateAlert("tactical-heroes", "same-fingerprint");
         var later = first with { StartsAt = first.StartsAt.AddHours(1) };
+        var receivedAtUtc = new DateTimeOffset(2026, 8, 30, 10, 0, 0, TimeSpan.Zero);
 
         var firstNotification = composer
-            .ComposeMetricAlerts("firing", string.Empty, [first])
+            .ComposeMetricAlerts("firing", string.Empty, [first], receivedAtUtc)
             .ShouldHaveSingleItem();
         var laterNotification = composer
-            .ComposeMetricAlerts("firing", string.Empty, [later])
+            .ComposeMetricAlerts("firing", string.Empty, [later], receivedAtUtc)
             .ShouldHaveSingleItem();
 
         laterNotification.Key.ShouldNotBe(firstNotification.Key);
+    }
+
+    [Fact(DisplayName = "Metric alert retries share a key while scheduled repeats get a new key")]
+    public void ComposeMetricAlerts_Should_Deduplicate_Retries_Without_Suppressing_Scheduled_Repeats()
+    {
+        using var scope = Fixture.CreateScope();
+        var composer = scope.ServiceProvider.GetRequiredService<INotificationComposer>();
+        var alert = CreateAlert("tactical-heroes", "stable-fingerprint");
+        var firstDelivery = new DateTimeOffset(2026, 8, 30, 10, 1, 0, TimeSpan.Zero);
+
+        var firstNotification = composer
+            .ComposeMetricAlerts("firing", string.Empty, [alert], firstDelivery)
+            .ShouldHaveSingleItem();
+        var retryNotification = composer
+            .ComposeMetricAlerts("firing", string.Empty, [alert], firstDelivery.AddMinutes(1))
+            .ShouldHaveSingleItem();
+        var scheduledRepeatNotification = composer
+            .ComposeMetricAlerts("firing", string.Empty, [alert], firstDelivery.AddHours(4))
+            .ShouldHaveSingleItem();
+
+        retryNotification.Key.ShouldBe(firstNotification.Key);
+        scheduledRepeatNotification.Key.ShouldNotBe(firstNotification.Key);
     }
 
     private static AlertmanagerAlert CreateAlert(string owner, string fingerprint)

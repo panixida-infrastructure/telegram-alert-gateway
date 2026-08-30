@@ -17,7 +17,8 @@ public sealed class QueueMetricAlertsHandler(
         var notifications = notificationComposer.ComposeMetricAlerts(
             command.Status,
             command.ExternalUrl,
-            command.Alerts);
+            command.Alerts,
+            command.ReceivedAtUtc);
 
         foreach (var item in notifications)
         {
