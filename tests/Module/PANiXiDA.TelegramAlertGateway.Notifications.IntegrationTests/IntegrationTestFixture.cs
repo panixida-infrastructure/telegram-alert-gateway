@@ -35,6 +35,11 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
                 ["AlertRouting:Rules:0:Matches:0"] = "tactical-heroes",
                 ["AlertRouting:Rules:1:Topic"] = "dotnet-template",
                 ["AlertRouting:Rules:1:Matches:0"] = "dotnet-template",
+                ["AlertRouting:Rules:2:Topic"] = "observability",
+                ["AlertRouting:Rules:2:Matches:0"] = "grafana",
+                ["AlertRouting:Rules:2:Matches:1"] = "telegram-alert-gateway",
+                ["AlertRouting:Rules:3:Topic"] = "core-platform",
+                ["AlertRouting:Rules:3:Matches:0"] = "core-platform",
                 ["VictoriaLogs:Endpoint"] = "http://victorialogs.test",
                 ["VictoriaLogs:GrafanaLogsUrl"] = "https://grafana.panixida.ru"
             })

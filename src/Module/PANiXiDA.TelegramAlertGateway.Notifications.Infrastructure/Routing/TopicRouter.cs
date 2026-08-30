@@ -11,14 +11,27 @@ internal sealed class TopicRouter(IOptions<AlertRoutingOptions> options) : ITopi
     public string Route(IReadOnlyDictionary<string, string> dimensions)
     {
         var owner = GetDimension(dimensions, "alert_owner", "owner");
+        if (!string.IsNullOrWhiteSpace(owner))
+        {
+            var ownerTopic = _options.Rules
+                .Select(rule => rule.Topic)
+                .Append(_options.DefaultTopic)
+                .FirstOrDefault(topic =>
+                    string.Equals(owner, topic, StringComparison.OrdinalIgnoreCase));
+
+            if (ownerTopic is not null)
+            {
+                return ownerTopic;
+            }
+        }
+
         var searchText = string.Join(
             ' ',
             dimensions.Values.Where(value => !string.IsNullOrWhiteSpace(value)));
 
         foreach (var rule in _options.Rules)
         {
-            if (string.Equals(owner, rule.Topic, StringComparison.OrdinalIgnoreCase)
-                || rule.Matches.Any(match =>
+            if (rule.Matches.Any(match =>
                     searchText.Contains(match, StringComparison.OrdinalIgnoreCase)))
             {
                 return rule.Topic;

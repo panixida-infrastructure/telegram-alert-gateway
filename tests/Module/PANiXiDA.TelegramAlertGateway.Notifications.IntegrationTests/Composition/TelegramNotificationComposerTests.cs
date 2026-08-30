@@ -68,6 +68,29 @@ public sealed class TelegramNotificationComposerTests(IntegrationTestFixture fix
             .ShouldBe(["dotnet-template", "tactical-heroes"]);
     }
 
+    [Theory(DisplayName = "Explicit owner takes precedence over labels matching another route")]
+    [InlineData("core-platform", "grafana")]
+    [InlineData("unclassified-tests", "telegram-alert-gateway-smoke")]
+    public void ComposeMetricAlerts_Should_Prioritize_Explicit_Owner_When_Labels_Match_Another_Route(
+        string owner,
+        string conflictingService)
+    {
+        using var scope = Fixture.CreateScope();
+        var composer = scope.ServiceProvider.GetRequiredService<INotificationComposer>();
+        var alert = CreateAlert(owner, $"{owner}-explicit-owner");
+        var labels = alert.Labels.ToDictionary(
+            pair => pair.Key,
+            pair => pair.Value,
+            StringComparer.Ordinal);
+        labels["service"] = conflictingService;
+
+        var notification = composer
+            .ComposeMetricAlerts("firing", string.Empty, [alert with { Labels = labels }])
+            .ShouldHaveSingleItem();
+
+        notification.Topic.ShouldBe(owner);
+    }
+
     [Fact(DisplayName = "A later occurrence of the same alert gets a new notification key")]
     public void ComposeMetricAlerts_Should_Not_Suppress_A_Later_Alert_Occurrence()
     {
