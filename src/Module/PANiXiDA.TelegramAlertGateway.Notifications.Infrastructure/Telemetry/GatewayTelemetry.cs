@@ -14,6 +14,9 @@ public static class GatewayTelemetry
     public static readonly Counter<long> FailedNotifications = Meter.CreateCounter<long>(
         "telegram_alert_gateway.notifications.failed");
 
+    public static readonly Counter<long> DeletedNotifications = Meter.CreateCounter<long>(
+        "telegram_alert_gateway.notifications.deleted");
+
     public static readonly Counter<long> DirectFallbacks = Meter.CreateCounter<long>(
         "telegram_alert_gateway.telegram.direct_fallbacks");
 

@@ -49,6 +49,7 @@ internal sealed class NotificationConfiguration : AuditableEntityConfiguration<N
             .HasMaxLength(Notification.MaxErrorLength);
 
         builder.HasIndex(item => new { item.Status, item.AvailableAtUtc });
+        builder.HasIndex(item => new { item.Status, item.SentAtUtc });
     }
 
     private static readonly ValueConverter<NotificationId, Guid> NotificationIdConverter = new(

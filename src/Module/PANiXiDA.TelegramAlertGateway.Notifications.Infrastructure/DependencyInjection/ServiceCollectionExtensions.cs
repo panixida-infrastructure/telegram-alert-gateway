@@ -55,11 +55,21 @@ public static class ServiceCollectionExtensions
                     && options.MaxEntriesPerWindow > 0,
                 "VictoriaLogs endpoint, query, and positive polling limits are required.")
             .ValidateOnStart();
+        serviceCollection.AddOptions<NotificationRetentionOptions>()
+            .Bind(configuration.GetSection(NotificationRetentionOptions.SectionName))
+            .Validate(
+                options => options.SentRetentionDays > 0
+                    && options.FailedRetentionDays >= options.SentRetentionDays
+                    && options.BatchSize is > 0 and <= 10000
+                    && options.CleanupIntervalHours is > 0 and <= 168,
+                "Notification retention periods, batch size, and cleanup interval are invalid.")
+            .ValidateOnStart();
 
         serviceCollection.AddSingleton(TimeProvider.System);
         serviceCollection.AddSingleton<ITopicRouter, TopicRouter>();
         serviceCollection.AddSingleton<INotificationComposer, TelegramNotificationComposer>();
         serviceCollection.AddScoped<INotificationsRepository, NotificationsRepository>();
+        serviceCollection.AddScoped<NotificationRetentionCleaner>();
         serviceCollection.AddScoped<ITelegramNotificationSender, TelegramNotificationSender>();
         serviceCollection.AddSingleton<TelegramClientFactory>();
         serviceCollection.AddScoped<LogEventNormalizer>();
@@ -95,6 +105,7 @@ public static class ServiceCollectionExtensions
         {
             serviceCollection.AddHostedService<LogPollingWorker>();
             serviceCollection.AddHostedService<NotificationDeliveryWorker>();
+            serviceCollection.AddHostedService<NotificationRetentionWorker>();
         }
         serviceCollection.AddHealthChecks()
             .AddCheck<DatabaseHealthCheck>("postgresql", tags: ["ready"]);

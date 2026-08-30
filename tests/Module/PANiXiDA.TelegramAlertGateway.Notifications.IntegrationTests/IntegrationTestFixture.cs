@@ -41,7 +41,8 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
                 ["AlertRouting:Rules:3:Topic"] = "core-platform",
                 ["AlertRouting:Rules:3:Matches:0"] = "core-platform",
                 ["VictoriaLogs:Endpoint"] = "http://victorialogs.test",
-                ["VictoriaLogs:GrafanaLogsUrl"] = "https://grafana.panixida.ru"
+                ["VictoriaLogs:GrafanaLogsUrl"] = "https://grafana.panixida.ru",
+                ["NotificationRetention:BatchSize"] = "2"
             })
             .Build();
 
