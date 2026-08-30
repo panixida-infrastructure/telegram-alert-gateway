@@ -12,8 +12,8 @@ public sealed class VictoriaLogsOptions
         + " OR severity:(i(error) OR i(fatal) OR i(critical))"
         + " OR level:(i(error) OR i(fatal) OR i(critical))"
         + " OR \"log.level\":(i(error) OR i(fatal) OR i(critical))"
-        + " OR LogLevel:(i(error) OR i(fatal) OR i(critical))"
-        + " OR (i(error) OR i(exception) OR i(fatal) OR i(critical) OR i(failed) OR i(failure))";
+        + " OR SeverityText:(i(error) OR i(fatal) OR i(critical))"
+        + " OR LogLevel:(i(error) OR i(fatal) OR i(critical))";
     public int PollIntervalSeconds { get; init; } = 60;
     public int IngestionDelaySeconds { get; init; } = 15;
     public int MaxEntriesPerWindow { get; init; } = 10000;

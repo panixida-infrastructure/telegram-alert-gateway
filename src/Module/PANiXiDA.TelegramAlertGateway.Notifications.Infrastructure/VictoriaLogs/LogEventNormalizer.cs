@@ -29,7 +29,11 @@ public sealed partial class LogEventNormalizer(IOptions<VictoriaLogsOptions> opt
                     .ThenByDescending(item => item.Message.Length)
                     .First();
 
-                return preferred with { Occurrences = group.Count() };
+                var occurrences = group
+                    .GroupBy(CreateSourceIdentity, StringComparer.Ordinal)
+                    .Max(sourceGroup => sourceGroup.Count());
+
+                return preferred with { Occurrences = occurrences };
             })
             .OrderBy(item => item.Service, StringComparer.Ordinal)
             .ThenBy(item => item.Fingerprint, StringComparer.Ordinal)
@@ -52,7 +56,7 @@ public sealed partial class LogEventNormalizer(IOptions<VictoriaLogsOptions> opt
             "log.level",
             "SeverityText",
             "LogLevel");
-        if (!IsError(severity, message))
+        if (!IsError(severity))
         {
             return null;
         }
@@ -111,15 +115,19 @@ public sealed partial class LogEventNormalizer(IOptions<VictoriaLogsOptions> opt
             1);
     }
 
-    private static bool IsError(string? severity, string message)
+    private static bool IsError(string? severity)
     {
-        if (!string.IsNullOrWhiteSpace(severity)
-            && ErrorSeverityRegex().IsMatch(severity))
-        {
-            return true;
-        }
+        return !string.IsNullOrWhiteSpace(severity)
+               && ErrorSeverityRegex().IsMatch(severity);
+    }
 
-        return ErrorMessageRegex().IsMatch(message);
+    private static string CreateSourceIdentity(LogEvent logEvent)
+    {
+        return string.Join(
+            '\u001F',
+            logEvent.Service,
+            logEvent.Namespace,
+            logEvent.Container);
     }
 
     private static string CreateFingerprint(
@@ -160,9 +168,6 @@ public sealed partial class LogEventNormalizer(IOptions<VictoriaLogsOptions> opt
 
     [GeneratedRegex("^(error|fatal|critical)$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex ErrorSeverityRegex();
-
-    [GeneratedRegex("\\b(error|exception|failed|failure|fatal|critical)\\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
-    private static partial Regex ErrorMessageRegex();
 
     [GeneratedRegex("(?i)(?:[0-9a-f]{8}-[0-9a-f-]{27,}|\\b\\d{2,}\\b|0x[0-9a-f]+|\\d{4}-\\d{2}-\\d{2}T[^\\s]+)", RegexOptions.CultureInvariant)]
     private static partial Regex DynamicValueRegex();
