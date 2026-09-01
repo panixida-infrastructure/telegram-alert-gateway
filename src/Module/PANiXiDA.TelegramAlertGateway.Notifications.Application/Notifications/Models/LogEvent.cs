@@ -5,6 +5,7 @@ public sealed record LogEvent(
     string Service,
     string Namespace,
     string Container,
+    string? Owner,
     string Severity,
     string Message,
     string? ExceptionType,

@@ -83,6 +83,28 @@ public sealed class LogEventNormalizerTests(IntegrationTestFixture fixture)
         normalizer.Normalize(records).ShouldBeEmpty();
     }
 
+    [Fact(DisplayName = "Structured log owner is preserved for topic routing")]
+    public void Normalize_Should_Preserve_Explicit_Log_Owner()
+    {
+        using var scope = Fixture.CreateScope();
+        var normalizer = scope.ServiceProvider.GetRequiredService<LogEventNormalizer>();
+        var records = new IReadOnlyDictionary<string, string>[]
+        {
+            new Dictionary<string, string>
+            {
+                ["_time"] = "2026-08-30T10:00:05Z",
+                ["_msg"] = "Telegram alert gateway VictoriaLogs smoke test",
+                ["severity_text"] = "Error",
+                ["service.name"] = "log-smoke",
+                ["alert_owner"] = "unclassified-tests"
+            }
+        };
+
+        var logEvent = normalizer.Normalize(records).ShouldHaveSingleItem();
+
+        logEvent.Owner.ShouldBe("unclassified-tests");
+    }
+
     private static Dictionary<string, string> CreateRecord(
         string timestamp,
         string message,

@@ -98,7 +98,8 @@ internal sealed class TelegramNotificationComposer(
         {
             ["service"] = logEvent.Service,
             ["namespace"] = logEvent.Namespace,
-            ["container"] = logEvent.Container
+            ["container"] = logEvent.Container,
+            ["alert_owner"] = logEvent.Owner ?? string.Empty
         };
         var topic = topicRouter.Route(dimensions);
         var location = string.Join(

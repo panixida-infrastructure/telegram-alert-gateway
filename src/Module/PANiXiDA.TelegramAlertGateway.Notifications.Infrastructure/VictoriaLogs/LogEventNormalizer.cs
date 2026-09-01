@@ -95,6 +95,7 @@ public sealed partial class LogEventNormalizer(IOptions<VictoriaLogsOptions> opt
             "stack_trace",
             "StackTrace");
         var traceId = GetValue(fields, "trace_id", "trace.id", "TraceId");
+        var owner = GetValue(fields, "alert_owner", "owner");
         var timestampValue = GetValue(fields, "_time", "timestamp", "Timestamp");
         var timestamp = DateTimeOffset.TryParse(timestampValue, out var parsedTimestamp)
             ? parsedTimestamp
@@ -106,6 +107,7 @@ public sealed partial class LogEventNormalizer(IOptions<VictoriaLogsOptions> opt
             service,
             namespaceName,
             container,
+            owner,
             string.IsNullOrWhiteSpace(severity) ? "error" : severity,
             message,
             exceptionType,

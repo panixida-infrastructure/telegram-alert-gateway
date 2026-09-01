@@ -111,6 +111,7 @@ public sealed class TelegramNotificationComposerTests(IntegrationTestFixture fix
             "external-provisioner",
             "csi-driver-timeweb-cloud",
             "external-provisioner",
+            null,
             "error",
             "Failed to watch PersistentVolume",
             null,
@@ -135,6 +136,7 @@ public sealed class TelegramNotificationComposerTests(IntegrationTestFixture fix
             "unknown-service",
             "unknown-namespace",
             "unknown-container",
+            null,
             "error",
             "Unknown error",
             null,
@@ -146,6 +148,31 @@ public sealed class TelegramNotificationComposerTests(IntegrationTestFixture fix
         var notification = composer.ComposeLogEvent(timestamp, logEvent);
 
         notification.Topic.ShouldBe("unclassified");
+    }
+
+    [Fact(DisplayName = "Explicit log owner routes a synthetic event to the test topic")]
+    public void ComposeLogEvent_Should_Prioritize_Explicit_Test_Owner()
+    {
+        using var scope = Fixture.CreateScope();
+        var composer = scope.ServiceProvider.GetRequiredService<INotificationComposer>();
+        var timestamp = new DateTimeOffset(2026, 8, 31, 7, 37, 8, TimeSpan.Zero);
+        var logEvent = new LogEvent(
+            timestamp,
+            "log-smoke",
+            "alert-gateway-smoke",
+            "log-smoke",
+            "unclassified-tests",
+            "error",
+            "Telegram alert gateway VictoriaLogs smoke test",
+            null,
+            null,
+            null,
+            "log-smoke-fingerprint",
+            1);
+
+        var notification = composer.ComposeLogEvent(timestamp, logEvent);
+
+        notification.Topic.ShouldBe("unclassified-tests");
     }
 
     [Fact(DisplayName = "A later occurrence of the same alert gets a new notification key")]
