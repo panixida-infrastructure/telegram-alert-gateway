@@ -94,12 +94,11 @@ internal sealed class VictoriaLogsClient(
             return;
         }
 
-        foreach (var property in VictoriaLogsStreamParser.Parse(streamValue))
+        foreach (var property in VictoriaLogsStreamParser
+                     .Parse(streamValue)
+                     .Where(property => !fields.ContainsKey(property.Key)))
         {
-            if (!fields.ContainsKey(property.Key))
-            {
-                fields[property.Key] = property.Value;
-            }
+            fields[property.Key] = property.Value;
         }
     }
 }

@@ -9,11 +9,13 @@ internal static partial class VictoriaLogsStreamParser
     {
         var fields = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
-        foreach (Match match in StreamFieldRegex().Matches(value))
+        foreach (var groups in StreamFieldRegex()
+                     .Matches(value)
+                     .Select(match => match.Groups))
         {
             fields.TryAdd(
-                match.Groups["name"].Value,
-                Unescape(match.Groups["value"].Value));
+                groups["name"].Value,
+                Unescape(groups["value"].Value));
         }
 
         return fields;
@@ -27,35 +29,26 @@ internal static partial class VictoriaLogsStreamParser
         }
 
         var result = new StringBuilder(value.Length);
-        for (var index = 0; index < value.Length; index++)
+        var index = 0;
+        while (index < value.Length)
         {
-            var character = value[index];
-            if (character != '\\' || index == value.Length - 1)
+            var character = value[index++];
+            if (character != '\\' || index == value.Length)
             {
                 result.Append(character);
                 continue;
             }
 
-            var escapedCharacter = value[++index];
-            switch (escapedCharacter)
+            var escapedCharacter = value[index++];
+            var replacement = escapedCharacter switch
             {
-                case 'n':
-                    result.Append('\n');
-                    break;
-                case 'r':
-                    result.Append('\r');
-                    break;
-                case 't':
-                    result.Append('\t');
-                    break;
-                case '\\':
-                case '"':
-                    result.Append(escapedCharacter);
-                    break;
-                default:
-                    result.Append('\\').Append(escapedCharacter);
-                    break;
-            }
+                'n' => "\n",
+                'r' => "\r",
+                't' => "\t",
+                '\\' or '"' => escapedCharacter.ToString(),
+                _ => $"\\{escapedCharacter}",
+            };
+            result.Append(replacement);
         }
 
         return result.ToString();
