@@ -1,3 +1,5 @@
+using System.Text.Json;
+
 using Microsoft.Extensions.DependencyInjection;
 
 using PANiXiDA.TelegramAlertGateway.Notifications.Infrastructure.VictoriaLogs;
@@ -146,6 +148,35 @@ public sealed class LogEventNormalizerTests(IntegrationTestFixture fixture)
         var logEvent = normalizer.Normalize(records).ShouldHaveSingleItem();
 
         logEvent.Occurrences.ShouldBe(2);
+    }
+
+    [Fact(DisplayName = "Different Kubernetes API transport failures remain separate errors")]
+    public void Normalize_Should_Keep_Different_Kubernetes_Api_Failures_Separate()
+    {
+        using var scope = Fixture.CreateScope();
+        var normalizer = scope.ServiceProvider.GetRequiredService<LogEventNormalizer>();
+        var failures = new[]
+        {
+            "dial tcp 10.96.0.1:443: connect: connection refused",
+            "net/http: TLS handshake timeout",
+            "read tcp 10.0.1.73:34994->10.96.0.1:443: connection reset by peer",
+            "context deadline exceeded",
+            "http2: client connection lost"
+        };
+        var records = failures
+            .Select((failure, index) => CreateArgoCdRecord(
+                $"2026-09-01T17:47:{index + 20:D2}Z",
+                JsonSerializer.Serialize(new
+                {
+                    error = $"Get https://10.96.0.1:443/api/v1/pods: {failure}",
+                    level = "error",
+                    msg = "Watch failed"
+                })))
+            .ToArray();
+
+        var events = normalizer.Normalize(records);
+
+        events.Count.ShouldBe(failures.Length);
     }
 
     private static Dictionary<string, string> CreateRecord(
