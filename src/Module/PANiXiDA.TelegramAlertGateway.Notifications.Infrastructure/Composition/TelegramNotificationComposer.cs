@@ -16,6 +16,8 @@ internal sealed class TelegramNotificationComposer(
     : INotificationComposer
 {
     private const string Separator = "────────────";
+    private const string ResolvedStatus = "resolved";
+    private const string LinkOpeningTag = "🔗 <a href=\"";
     private const int MaxAlertBlockLength = 2600;
     private const int PageContentLimit = 3400;
     private static readonly TimeSpan MetricDeliveryDeduplicationWindow = TimeSpan.FromMinutes(5);
@@ -45,11 +47,11 @@ internal sealed class TelegramNotificationComposer(
             {
                 var normalizedStatus = string.Equals(
                     status,
-                    "resolved",
+                    ResolvedStatus,
                     StringComparison.OrdinalIgnoreCase)
-                    ? "resolved"
+                    ? ResolvedStatus
                     : "firing";
-                var header = normalizedStatus == "resolved"
+                var header = normalizedStatus == ResolvedStatus
                     ? "✅ <b>Alerts resolved</b>"
                     : "🔥 <b>Alerts firing</b>";
                 var pageLabel = pages.Count > 1
@@ -67,7 +69,7 @@ internal sealed class TelegramNotificationComposer(
                 if (!string.IsNullOrWhiteSpace(externalUrl))
                 {
                     body.AppendLine()
-                        .Append("🔗 <a href=\"")
+                        .Append(LinkOpeningTag)
                         .Append(Html(externalUrl))
                         .Append("\">Alertmanager</a>");
                 }
@@ -158,7 +160,7 @@ internal sealed class TelegramNotificationComposer(
 
         if (!string.IsNullOrWhiteSpace(_victoriaLogsOptions.GrafanaLogsUrl))
         {
-            message.Append("🔗 <a href=\"")
+            message.Append(LinkOpeningTag)
                 .Append(Html(Truncate(_victoriaLogsOptions.GrafanaLogsUrl, 500)))
                 .Append("\">Logs</a>");
         }
@@ -171,7 +173,7 @@ internal sealed class TelegramNotificationComposer(
 
     private static string BuildMetricAlertBlock(AlertmanagerAlert alert)
     {
-        var isResolved = string.Equals(alert.Status, "resolved", StringComparison.OrdinalIgnoreCase);
+        var isResolved = string.Equals(alert.Status, ResolvedStatus, StringComparison.OrdinalIgnoreCase);
         var alertName = GetValue(alert.Labels, "alertname") ?? "unnamed-alert";
         var severity = GetValue(alert.Labels, "severity") ?? "warning";
         var owner = GetValue(alert.Labels, "service", "service_name", "job", "namespace")
@@ -202,7 +204,7 @@ internal sealed class TelegramNotificationComposer(
 
         if (!string.IsNullOrWhiteSpace(dashboardUrl))
         {
-            builder.Append("🔗 <a href=\"")
+            builder.Append(LinkOpeningTag)
                 .Append(Html(Truncate(dashboardUrl, 500)))
                 .AppendLine("\">Open details</a>");
         }
@@ -241,7 +243,7 @@ internal sealed class TelegramNotificationComposer(
 
         if (!string.IsNullOrWhiteSpace(dashboardUrl))
         {
-            builder.Append("🔗 <a href=\"")
+            builder.Append(LinkOpeningTag)
                 .Append(Html(Truncate(dashboardUrl, 500)))
                 .AppendLine("\">Open details</a>");
         }

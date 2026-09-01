@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -97,7 +98,11 @@ public sealed partial class LogEventNormalizer(IOptions<VictoriaLogsOptions> opt
         var traceId = GetValue(fields, "trace_id", "trace.id", "TraceId");
         var owner = GetValue(fields, "alert_owner", "owner");
         var timestampValue = GetValue(fields, "_time", "timestamp", "Timestamp");
-        var timestamp = DateTimeOffset.TryParse(timestampValue, out var parsedTimestamp)
+        var timestamp = DateTimeOffset.TryParse(
+            timestampValue,
+            CultureInfo.InvariantCulture,
+            DateTimeStyles.AssumeUniversal,
+            out var parsedTimestamp)
             ? parsedTimestamp
             : DateTimeOffset.UtcNow;
         var fingerprint = CreateFingerprint(service, namespaceName, exceptionType, message);
@@ -138,13 +143,17 @@ public sealed partial class LogEventNormalizer(IOptions<VictoriaLogsOptions> opt
         string? exceptionType,
         string message)
     {
-        var owner = service.Contains("tactical-heroes", StringComparison.OrdinalIgnoreCase)
-            || namespaceName.Contains("tactical-heroes", StringComparison.OrdinalIgnoreCase)
-                ? "tactical-heroes"
-                : service.Contains("dotnet-template", StringComparison.OrdinalIgnoreCase)
-                  || namespaceName.Contains("dotnet-template", StringComparison.OrdinalIgnoreCase)
-                    ? "dotnet-template"
-                    : service;
+        var owner = service;
+        if (service.Contains("tactical-heroes", StringComparison.OrdinalIgnoreCase)
+            || namespaceName.Contains("tactical-heroes", StringComparison.OrdinalIgnoreCase))
+        {
+            owner = "tactical-heroes";
+        }
+        else if (service.Contains("dotnet-template", StringComparison.OrdinalIgnoreCase)
+                 || namespaceName.Contains("dotnet-template", StringComparison.OrdinalIgnoreCase))
+        {
+            owner = "dotnet-template";
+        }
         var normalizedMessage = DynamicValueRegex()
             .Replace(message, "#")
             .Trim();
