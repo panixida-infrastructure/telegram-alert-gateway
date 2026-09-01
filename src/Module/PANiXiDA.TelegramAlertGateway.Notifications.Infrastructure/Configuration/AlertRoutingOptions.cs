@@ -4,7 +4,7 @@ public sealed class AlertRoutingOptions
 {
     public const string SectionName = "AlertRouting";
 
-    public string DefaultTopic { get; init; } = "unclassified-tests";
+    public string DefaultTopic { get; init; } = "unclassified";
     public List<AlertRoutingRule> Rules { get; init; } = [];
 }
 

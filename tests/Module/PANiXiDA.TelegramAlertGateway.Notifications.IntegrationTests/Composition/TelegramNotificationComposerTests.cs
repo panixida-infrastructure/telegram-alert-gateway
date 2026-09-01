@@ -100,6 +100,54 @@ public sealed class TelegramNotificationComposerTests(IntegrationTestFixture fix
         notification.Topic.ShouldBe(owner);
     }
 
+    [Fact(DisplayName = "Timeweb CSI log events are routed to the core platform owner")]
+    public void ComposeLogEvent_Should_Route_Timeweb_Csi_To_Core_Platform()
+    {
+        using var scope = Fixture.CreateScope();
+        var composer = scope.ServiceProvider.GetRequiredService<INotificationComposer>();
+        var timestamp = new DateTimeOffset(2026, 8, 31, 7, 37, 8, TimeSpan.Zero);
+        var logEvent = new LogEvent(
+            timestamp,
+            "external-provisioner",
+            "csi-driver-timeweb-cloud",
+            "external-provisioner",
+            "error",
+            "Failed to watch PersistentVolume",
+            null,
+            null,
+            null,
+            "timeweb-csi-fingerprint",
+            1);
+
+        var notification = composer.ComposeLogEvent(timestamp, logEvent);
+
+        notification.Topic.ShouldBe("core-platform");
+    }
+
+    [Fact(DisplayName = "Unknown log events use the unclassified fallback topic")]
+    public void ComposeLogEvent_Should_Use_Unclassified_Fallback()
+    {
+        using var scope = Fixture.CreateScope();
+        var composer = scope.ServiceProvider.GetRequiredService<INotificationComposer>();
+        var timestamp = new DateTimeOffset(2026, 8, 31, 7, 37, 8, TimeSpan.Zero);
+        var logEvent = new LogEvent(
+            timestamp,
+            "unknown-service",
+            "unknown-namespace",
+            "unknown-container",
+            "error",
+            "Unknown error",
+            null,
+            null,
+            null,
+            "unknown-fingerprint",
+            1);
+
+        var notification = composer.ComposeLogEvent(timestamp, logEvent);
+
+        notification.Topic.ShouldBe("unclassified");
+    }
+
     [Fact(DisplayName = "A later occurrence of the same alert gets a new notification key")]
     public void ComposeMetricAlerts_Should_Not_Suppress_A_Later_Alert_Occurrence()
     {

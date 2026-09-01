@@ -28,7 +28,11 @@ Topic and service names use lower-kebab-case. Current topics are:
 - `postgresql`;
 - `core-platform`;
 - `observability`;
+- `unclassified`;
 - `unclassified-tests`.
+
+Unmatched production alerts use `unclassified`. The `unclassified-tests` topic is
+reserved for synthetic checks with an explicit owner.
 
 ## Architecture
 

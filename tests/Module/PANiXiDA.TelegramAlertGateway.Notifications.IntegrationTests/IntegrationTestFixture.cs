@@ -30,7 +30,7 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
             .AddInMemoryCollection(new Dictionary<string, string?>
             {
                 [PostgreSqlConnectionStringConfigurationKey] = ConnectionString,
-                ["AlertRouting:DefaultTopic"] = "unclassified-tests",
+                ["AlertRouting:DefaultTopic"] = "unclassified",
                 ["AlertRouting:Rules:0:Topic"] = "tactical-heroes",
                 ["AlertRouting:Rules:0:Matches:0"] = "tactical-heroes",
                 ["AlertRouting:Rules:1:Topic"] = "dotnet-template",
@@ -40,6 +40,9 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
                 ["AlertRouting:Rules:2:Matches:1"] = "telegram-alert-gateway",
                 ["AlertRouting:Rules:3:Topic"] = "core-platform",
                 ["AlertRouting:Rules:3:Matches:0"] = "core-platform",
+                ["AlertRouting:Rules:3:Matches:1"] = "csi-driver-timeweb-cloud",
+                ["AlertRouting:Rules:4:Topic"] = "unclassified-tests",
+                ["AlertRouting:Rules:4:Matches:0"] = "telegram-alert-gateway-smoke",
                 ["VictoriaLogs:Endpoint"] = "http://victorialogs.test",
                 ["VictoriaLogs:GrafanaLogsUrl"] = "https://grafana.panixida.ru",
                 ["NotificationRetention:BatchSize"] = "2"
