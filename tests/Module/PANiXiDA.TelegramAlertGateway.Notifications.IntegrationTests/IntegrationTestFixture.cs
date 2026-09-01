@@ -48,6 +48,7 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
                 ["AlertRouting:Rules:4:Topic"] = "tests",
                 ["AlertRouting:Rules:4:Matches:0"] = "telegram-alert-gateway-smoke",
                 ["VictoriaLogs:Endpoint"] = "http://victorialogs.test",
+                ["VictoriaLogs:WindowSeconds"] = "60",
                 ["VictoriaLogs:GrafanaLogsUrl"] = "https://grafana.panixida.ru",
                 ["NotificationRetention:BatchSize"] = "2"
             })

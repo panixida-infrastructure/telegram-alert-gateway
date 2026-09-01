@@ -206,6 +206,58 @@ public sealed class TelegramNotificationComposerTests(IntegrationTestFixture fix
         notification.Topic.ShouldBe("tests");
     }
 
+    [Fact(DisplayName = "Log aggregation count uses the configured collection window")]
+    public void ComposeLogEvent_Should_Render_Configured_Log_Window()
+    {
+        using var scope = Fixture.CreateScope();
+        var composer = scope.ServiceProvider.GetRequiredService<INotificationComposer>();
+        var windowStart = new DateTimeOffset(2026, 9, 1, 17, 46, 0, TimeSpan.Zero);
+        var logEvent = new LogEvent(
+            windowStart.AddSeconds(8),
+            "metrics-server",
+            "kube-system",
+            "metrics-server",
+            null,
+            "error",
+            "Failed to scrape node, timeout to access kubelet",
+            null,
+            null,
+            null,
+            "metrics-server-timeout",
+            5);
+
+        var notification = composer.ComposeLogEvent(windowStart, logEvent);
+
+        notification.Message.ShouldContain(
+            "repeated <b>5 times</b> in a 1-minute log window");
+    }
+
+    [Fact(DisplayName = "The same log error in the next collection window gets a new key")]
+    public void ComposeLogEvent_Should_Create_New_Key_For_Next_Window()
+    {
+        using var scope = Fixture.CreateScope();
+        var composer = scope.ServiceProvider.GetRequiredService<INotificationComposer>();
+        var firstWindow = new DateTimeOffset(2026, 9, 1, 17, 46, 0, TimeSpan.Zero);
+        var logEvent = new LogEvent(
+            firstWindow.AddSeconds(8),
+            "metrics-server",
+            "kube-system",
+            "metrics-server",
+            null,
+            "error",
+            "Failed to scrape node, timeout to access kubelet",
+            null,
+            null,
+            null,
+            "metrics-server-timeout",
+            5);
+
+        var first = composer.ComposeLogEvent(firstWindow, logEvent);
+        var next = composer.ComposeLogEvent(firstWindow.AddMinutes(1), logEvent);
+
+        next.Key.ShouldNotBe(first.Key);
+    }
+
     [Fact(DisplayName = "A later occurrence of the same alert gets a new notification key")]
     public void ComposeMetricAlerts_Should_Not_Suppress_A_Later_Alert_Occurrence()
     {

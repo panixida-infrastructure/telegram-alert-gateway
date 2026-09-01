@@ -105,6 +105,49 @@ public sealed class LogEventNormalizerTests(IntegrationTestFixture fixture)
         logEvent.Owner.ShouldBe("tests");
     }
 
+    [Fact(DisplayName = "Metrics server node timeouts are aggregated across dynamic node addresses")]
+    public void Normalize_Should_Aggregate_Metrics_Server_Timeouts_Across_Node_Addresses()
+    {
+        using var scope = Fixture.CreateScope();
+        var normalizer = scope.ServiceProvider.GetRequiredService<LogEventNormalizer>();
+        var records = new IReadOnlyDictionary<string, string>[]
+        {
+            CreateMetricsServerRecord(
+                "2026-09-01T17:46:08Z",
+                "E0901 17:46:08.284073 1 scraper.go:147] \"Failed to scrape node, timeout to access kubelet\" err=\"Get \\\"https://192.168.10.7:10250/metrics/resource\\\": context deadline exceeded\" node=\"worker-192.168.10.7\" timeout=\"10s\""),
+            CreateMetricsServerRecord(
+                "2026-09-01T17:46:18Z",
+                "E0901 17:46:18.288441 1 scraper.go:147] \"Failed to scrape node, timeout to access kubelet\" err=\"Get \\\"https://192.168.10.12:10250/metrics/resource\\\": context deadline exceeded\" node=\"worker-192.168.10.12\" timeout=\"10s\""),
+            CreateMetricsServerRecord(
+                "2026-09-01T17:46:28Z",
+                "E0901 17:46:28.288441 1 scraper.go:147] \"Failed to scrape node, timeout to access kubelet\" err=\"Get \\\"https://192.168.10.12:10250/metrics/resource\\\": context deadline exceeded\" node=\"worker-192.168.10.12\" timeout=\"10s\"")
+        };
+
+        var logEvent = normalizer.Normalize(records).ShouldHaveSingleItem();
+
+        logEvent.Occurrences.ShouldBe(3);
+    }
+
+    [Fact(DisplayName = "Kubernetes API transport failures are aggregated across watched resources")]
+    public void Normalize_Should_Aggregate_Kubernetes_Api_Failures_Across_Resources()
+    {
+        using var scope = Fixture.CreateScope();
+        var normalizer = scope.ServiceProvider.GetRequiredService<LogEventNormalizer>();
+        var records = new IReadOnlyDictionary<string, string>[]
+        {
+            CreateArgoCdRecord(
+                "2026-09-01T17:47:01Z",
+                """{"error":"failed to list *v1.ConfigMap: Get \"https://10.96.0.1:443/api/v1/namespaces/argocd/configmaps?resourceVersion=42419091\": net/http: TLS handshake timeout","level":"error","msg":"Failed to watch","time":"2026-09-01T17:47:01Z"}"""),
+            CreateArgoCdRecord(
+                "2026-09-01T17:47:11Z",
+                """{"error":"failed to list *v1.Role: Get \"https://10.96.0.1:443/apis/rbac.authorization.k8s.io/v1/roles?resourceVersion=42419156\": net/http: TLS handshake timeout","level":"error","msg":"Failed to watch","time":"2026-09-01T17:47:11Z"}""")
+        };
+
+        var logEvent = normalizer.Normalize(records).ShouldHaveSingleItem();
+
+        logEvent.Occurrences.ShouldBe(2);
+    }
+
     private static Dictionary<string, string> CreateRecord(
         string timestamp,
         string message,
@@ -128,5 +171,35 @@ public sealed class LogEventNormalizerTests(IntegrationTestFixture fixture)
                 ["k8s.namespace.name"] = "tactical-heroes-production",
                 ["k8s.container.name"] = "api"
             };
+    }
+
+    private static Dictionary<string, string> CreateMetricsServerRecord(
+        string timestamp,
+        string message)
+    {
+        return new Dictionary<string, string>
+        {
+            ["_time"] = timestamp,
+            ["_msg"] = message,
+            ["LogLevel"] = "Error",
+            ["service.name"] = "metrics-server",
+            ["k8s.namespace.name"] = "kube-system",
+            ["k8s.container.name"] = "metrics-server"
+        };
+    }
+
+    private static Dictionary<string, string> CreateArgoCdRecord(
+        string timestamp,
+        string message)
+    {
+        return new Dictionary<string, string>
+        {
+            ["_time"] = timestamp,
+            ["_msg"] = message,
+            ["severity_text"] = "Error",
+            ["service.name"] = "application-controller",
+            ["k8s.namespace.name"] = "argocd",
+            ["k8s.container.name"] = "application-controller"
+        };
     }
 }

@@ -10,7 +10,8 @@ and sends messages through `Telegram.Bot`.
   `POST /api/v1/webhooks/alertmanager` with a bearer token.
 - Metric alerts preserve `firing` and `resolved` states. Large groups are split into
   multiple Telegram messages; alerts are never silently omitted.
-- The gateway polls completed one-minute VictoriaLogs windows for error events.
+- The gateway polls completed VictoriaLogs windows for error events. The configured
+  window duration is also used for aggregation counts shown in Telegram.
 - Repeated copies of one normalized error are combined into one message with an
   occurrence count. Different errors remain separate messages.
 - A log message includes service, Kubernetes namespace/container, error text,

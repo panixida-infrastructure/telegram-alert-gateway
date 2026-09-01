@@ -51,6 +51,7 @@ public static class ServiceCollectionExtensions
                 options => Uri.TryCreate(options.Endpoint, UriKind.Absolute, out _)
                     && !string.IsNullOrWhiteSpace(options.Query)
                     && options.PollIntervalSeconds > 0
+                    && options.WindowSeconds > 0
                     && options.IngestionDelaySeconds >= 0
                     && options.MaxEntriesPerWindow > 0,
                 "VictoriaLogs endpoint, query, and positive polling limits are required.")

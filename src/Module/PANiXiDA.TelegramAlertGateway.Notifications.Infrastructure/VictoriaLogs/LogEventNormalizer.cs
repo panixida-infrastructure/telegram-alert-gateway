@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 
 using Microsoft.Extensions.Options;
@@ -154,12 +155,104 @@ public sealed partial class LogEventNormalizer(IOptions<VictoriaLogsOptions> opt
         {
             owner = "dotnet-template";
         }
-        var normalizedMessage = DynamicValueRegex()
-            .Replace(message, "#")
-            .Trim();
+        var normalizedMessage = NormalizeMessageForFingerprint(message);
         var source = $"{owner}|{exceptionType}|{normalizedMessage}";
 
         return Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(source)));
+    }
+
+    private static string NormalizeMessageForFingerprint(string message)
+    {
+        var fingerprintMessage = TryCreateKubernetesApiFailureFingerprint(message) ?? message;
+
+        return DynamicValueRegex()
+            .Replace(Ipv4AddressRegex().Replace(fingerprintMessage, "#"), "#")
+            .Trim();
+    }
+
+    private static string? TryCreateKubernetesApiFailureFingerprint(string message)
+    {
+        if (!message.AsSpan().TrimStart().StartsWith('{'))
+        {
+            return null;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(message);
+            if (document.RootElement.ValueKind != JsonValueKind.Object)
+            {
+                return null;
+            }
+
+            var error = GetJsonString(document.RootElement, "error");
+            if (string.IsNullOrWhiteSpace(error) || !IsKubernetesApiRequest(error))
+            {
+                return null;
+            }
+
+            var failure = GetKubernetesApiFailure(error);
+            var summary = GetJsonString(document.RootElement, "msg", "message");
+
+            return failure is null || string.IsNullOrWhiteSpace(summary)
+                ? null
+                : $"{summary}|kubernetes-api|{failure}";
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    private static bool IsKubernetesApiRequest(string error)
+    {
+        return error.Contains("https://10.96.0.1", StringComparison.OrdinalIgnoreCase)
+               || error.Contains("local-k8s-", StringComparison.OrdinalIgnoreCase)
+               || error.Contains("kubernetes.default.svc", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string? GetKubernetesApiFailure(string error)
+    {
+        if (error.Contains("connection refused", StringComparison.OrdinalIgnoreCase))
+        {
+            return "connection-refused";
+        }
+
+        if (error.Contains("TLS handshake timeout", StringComparison.OrdinalIgnoreCase))
+        {
+            return "tls-handshake-timeout";
+        }
+
+        if (error.Contains("connection reset by peer", StringComparison.OrdinalIgnoreCase))
+        {
+            return "connection-reset";
+        }
+
+        if (error.Contains("context deadline exceeded", StringComparison.OrdinalIgnoreCase)
+            || error.Contains("Client.Timeout exceeded", StringComparison.OrdinalIgnoreCase)
+            || error.Contains("i/o timeout", StringComparison.OrdinalIgnoreCase))
+        {
+            return "request-timeout";
+        }
+
+        return error.Contains("client connection lost", StringComparison.OrdinalIgnoreCase)
+            ? "connection-lost"
+            : null;
+    }
+
+    private static string? GetJsonString(JsonElement element, params string[] names)
+    {
+        foreach (var name in names)
+        {
+            if (element.TryGetProperty(name, out var property)
+                && property.ValueKind == JsonValueKind.String
+                && !string.IsNullOrWhiteSpace(property.GetString()))
+            {
+                return property.GetString();
+            }
+        }
+
+        return null;
     }
 
     private static string? GetValue(
@@ -182,4 +275,7 @@ public sealed partial class LogEventNormalizer(IOptions<VictoriaLogsOptions> opt
 
     [GeneratedRegex("(?i)(?:[0-9a-f]{8}-[0-9a-f-]{27,}|\\b\\d{2,}\\b|0x[0-9a-f]+|\\d{4}-\\d{2}-\\d{2}T[^\\s]+)", RegexOptions.CultureInvariant)]
     private static partial Regex DynamicValueRegex();
+
+    [GeneratedRegex("\\b(?:\\d{1,3}\\.){3}\\d{1,3}\\b", RegexOptions.CultureInvariant)]
+    private static partial Regex Ipv4AddressRegex();
 }

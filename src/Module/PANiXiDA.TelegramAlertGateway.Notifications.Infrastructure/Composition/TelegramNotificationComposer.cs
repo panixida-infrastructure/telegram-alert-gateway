@@ -127,7 +127,9 @@ internal sealed class TelegramNotificationComposer(
         {
             message.Append(" · repeated <b>")
                 .Append(logEvent.Occurrences)
-                .Append(" times</b> in one minute");
+                .Append(" times</b> in a ")
+                .Append(FormatWindowDuration(_victoriaLogsOptions.WindowSeconds))
+                .Append(" log window");
         }
 
         message.AppendLine().AppendLine();
@@ -169,6 +171,21 @@ internal sealed class TelegramNotificationComposer(
             $"log|{windowStartUtc.UtcTicks}|{logEvent.Fingerprint}");
 
         return new ComposedNotification(key, topic, message.ToString());
+    }
+
+    private static string FormatWindowDuration(int seconds)
+    {
+        if (seconds % 3600 == 0)
+        {
+            return $"{seconds / 3600}-hour";
+        }
+
+        if (seconds % 60 == 0)
+        {
+            return $"{seconds / 60}-minute";
+        }
+
+        return $"{seconds}-second";
     }
 
     private static string BuildMetricAlertBlock(AlertmanagerAlert alert)

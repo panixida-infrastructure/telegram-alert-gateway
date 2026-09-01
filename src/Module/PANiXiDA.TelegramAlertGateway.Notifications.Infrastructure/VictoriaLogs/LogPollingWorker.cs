@@ -55,25 +55,17 @@ internal sealed class LogPollingWorker(
         await using var scope = scopeFactory.CreateAsyncScope();
         var dbContext = scope.ServiceProvider.GetRequiredService<NotificationsWriteDbContext>();
         var now = timeProvider.GetUtcNow();
+        var windowSize = TimeSpan.FromSeconds(_options.WindowSeconds);
+        var ingestionCutoff = now.AddSeconds(-_options.IngestionDelaySeconds);
         var latestCompleteWindowEnd = new DateTimeOffset(
-            now.Year,
-            now.Month,
-            now.Day,
-            now.Hour,
-            now.Minute,
-            0,
+            ingestionCutoff.UtcTicks / windowSize.Ticks * windowSize.Ticks,
             TimeSpan.Zero);
-
-        if (now < latestCompleteWindowEnd.AddSeconds(_options.IngestionDelaySeconds))
-        {
-            latestCompleteWindowEnd = latestCompleteWindowEnd.AddMinutes(-1);
-        }
 
         var checkpoint = await dbContext.LogIngestionCheckpoints
             .SingleOrDefaultAsync(item => item.Id == CheckpointId, cancellationToken);
         var windowStart = checkpoint?.NextWindowStartUtc
-            ?? latestCompleteWindowEnd.AddMinutes(-1);
-        var windowEnd = windowStart.AddMinutes(1);
+            ?? latestCompleteWindowEnd.Subtract(windowSize);
+        var windowEnd = windowStart.Add(windowSize);
 
         if (windowEnd > latestCompleteWindowEnd)
         {
