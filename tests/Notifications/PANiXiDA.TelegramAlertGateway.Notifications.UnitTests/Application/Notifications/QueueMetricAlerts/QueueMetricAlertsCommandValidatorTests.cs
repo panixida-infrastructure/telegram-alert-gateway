@@ -1,4 +1,3 @@
-using PANiXiDA.TelegramAlertGateway.Notifications.Application.Notifications.Models;
 using PANiXiDA.TelegramAlertGateway.Notifications.Application.Notifications.QueueMetricAlerts;
 
 namespace PANiXiDA.TelegramAlertGateway.Notifications.UnitTests.Application.Notifications.QueueMetricAlerts;
@@ -12,7 +11,7 @@ public sealed class QueueMetricAlertsCommandValidatorTests
         var command = new QueueMetricAlertsCommand(
             Status: string.Empty,
             ExternalUrl: string.Empty,
-            Alerts: Array.Empty<AlertmanagerAlert>(),
+            Alerts: [],
             ReceivedAtUtc: DateTimeOffset.UnixEpoch);
 
         var result = validator.Validate(command);

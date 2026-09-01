@@ -1,4 +1,3 @@
-using PANiXiDA.TelegramAlertGateway.Notifications.Application.Notifications.Models;
 using PANiXiDA.TelegramAlertGateway.Notifications.Application.Notifications.QueueLogEvents;
 
 namespace PANiXiDA.TelegramAlertGateway.Notifications.UnitTests.Application.Notifications.QueueLogEvents;
@@ -11,7 +10,7 @@ public sealed class QueueLogEventsCommandValidatorTests
         var validator = new QueueLogEventsCommandValidator();
         var command = new QueueLogEventsCommand(
             WindowStartUtc: DateTimeOffset.UnixEpoch,
-            Events: Array.Empty<LogEvent>(),
+            Events: [],
             ReceivedAtUtc: DateTimeOffset.UnixEpoch);
 
         var result = validator.Validate(command);

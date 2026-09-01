@@ -7,6 +7,7 @@ namespace PANiXiDA.TelegramAlertGateway.Notifications.Infrastructure.Health;
 
 internal sealed class DatabaseHealthCheck(IServiceScopeFactory scopeFactory) : IHealthCheck
 {
+#pragma warning disable S1006 // Callers must always provide an actual cancellation token.
     public async Task<HealthCheckResult> CheckHealthAsync(
         HealthCheckContext context,
         CancellationToken cancellationToken)
@@ -25,4 +26,5 @@ internal sealed class DatabaseHealthCheck(IServiceScopeFactory scopeFactory) : I
             return HealthCheckResult.Unhealthy("PostgreSQL health check failed.", exception);
         }
     }
+#pragma warning restore S1006
 }
