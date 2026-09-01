@@ -125,6 +125,37 @@ public sealed class TelegramNotificationComposerTests(IntegrationTestFixture fix
         notification.Topic.ShouldBe("core-platform");
     }
 
+    [Theory(DisplayName = "Kubernetes platform log events are routed to the core platform owner")]
+    [InlineData("metrics-server", "kube-system", "metrics-server")]
+    [InlineData("external-secrets", "external-secrets", "external-secrets")]
+    [InlineData("cert-controller", "external-secrets", "cert-controller")]
+    public void ComposeLogEvent_Should_Route_Kubernetes_Platform_Service_To_Core_Platform(
+        string service,
+        string namespaceName,
+        string container)
+    {
+        using var scope = Fixture.CreateScope();
+        var composer = scope.ServiceProvider.GetRequiredService<INotificationComposer>();
+        var timestamp = new DateTimeOffset(2026, 9, 1, 17, 0, 0, TimeSpan.Zero);
+        var logEvent = new LogEvent(
+            timestamp,
+            service,
+            namespaceName,
+            container,
+            null,
+            "error",
+            "Kubernetes platform component failed",
+            null,
+            null,
+            null,
+            $"{service}-fingerprint",
+            1);
+
+        var notification = composer.ComposeLogEvent(timestamp, logEvent);
+
+        notification.Topic.ShouldBe("core-platform");
+    }
+
     [Fact(DisplayName = "Unknown log events use the unclassified fallback topic")]
     public void ComposeLogEvent_Should_Use_Unclassified_Fallback()
     {

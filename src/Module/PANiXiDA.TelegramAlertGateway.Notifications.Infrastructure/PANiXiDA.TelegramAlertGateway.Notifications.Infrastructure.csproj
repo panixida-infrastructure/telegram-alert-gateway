@@ -15,6 +15,10 @@
     </ItemGroup>
 
     <ItemGroup>
+        <InternalsVisibleTo Include="PANiXiDA.TelegramAlertGateway.Notifications.IntegrationTests" />
+    </ItemGroup>
+
+    <ItemGroup>
         <Using Include="PANiXiDA.Core.Domain" />
         <Using Include="PANiXiDA.Core.Domain.AggregateRoots" />
         <Using Include="PANiXiDA.Core.Domain.DomainEvents" />

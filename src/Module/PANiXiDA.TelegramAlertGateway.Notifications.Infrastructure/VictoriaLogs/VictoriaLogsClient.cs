@@ -94,19 +94,12 @@ internal sealed class VictoriaLogsClient(
             return;
         }
 
-        try
+        foreach (var property in VictoriaLogsStreamParser.Parse(streamValue))
         {
-            using var streamDocument = JsonDocument.Parse(streamValue);
-            foreach (var property in streamDocument.RootElement.EnumerateObject())
+            if (!fields.ContainsKey(property.Key))
             {
-                if (!fields.ContainsKey(property.Name))
-                {
-                    fields[property.Name] = property.Value.GetString() ?? string.Empty;
-                }
+                fields[property.Key] = property.Value;
             }
-        }
-        catch (JsonException)
-        {
         }
     }
 }
