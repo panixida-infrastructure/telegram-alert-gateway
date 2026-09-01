@@ -16,16 +16,17 @@
   <Folder Name="/src/">
     <Project Path="src/PANiXiDA.TelegramAlertGateway.Host/PANiXiDA.TelegramAlertGateway.Host.csproj" />
   </Folder>
-  <Folder Name="/src/Module/">
-    <Project Path="src/Module/PANiXiDA.TelegramAlertGateway.Notifications.Application/PANiXiDA.TelegramAlertGateway.Notifications.Application.csproj" />
-    <Project Path="src/Module/PANiXiDA.TelegramAlertGateway.Notifications.Domain/PANiXiDA.TelegramAlertGateway.Notifications.Domain.csproj" />
-    <Project Path="src/Module/PANiXiDA.TelegramAlertGateway.Notifications.Infrastructure/PANiXiDA.TelegramAlertGateway.Notifications.Infrastructure.csproj" />
-    <Project Path="src/Module/PANiXiDA.TelegramAlertGateway.Notifications.Presentation/PANiXiDA.TelegramAlertGateway.Notifications.Presentation.csproj" />
+  <Folder Name="/src/Notifications/">
+    <Project Path="src/Notifications/PANiXiDA.TelegramAlertGateway.Notifications.Contracts/PANiXiDA.TelegramAlertGateway.Notifications.Contracts.csproj" />
+    <Project Path="src/Notifications/PANiXiDA.TelegramAlertGateway.Notifications.Application/PANiXiDA.TelegramAlertGateway.Notifications.Application.csproj" />
+    <Project Path="src/Notifications/PANiXiDA.TelegramAlertGateway.Notifications.Domain/PANiXiDA.TelegramAlertGateway.Notifications.Domain.csproj" />
+    <Project Path="src/Notifications/PANiXiDA.TelegramAlertGateway.Notifications.Infrastructure/PANiXiDA.TelegramAlertGateway.Notifications.Infrastructure.csproj" />
+    <Project Path="src/Notifications/PANiXiDA.TelegramAlertGateway.Notifications.Presentation/PANiXiDA.TelegramAlertGateway.Notifications.Presentation.csproj" />
   </Folder>
-  <Folder Name="/tests/Module/">
-    <Project Path="tests/Module/PANiXiDA.TelegramAlertGateway.Notifications.FunctionalTests/PANiXiDA.TelegramAlertGateway.Notifications.FunctionalTests.csproj" />
-    <Project Path="tests/Module/PANiXiDA.TelegramAlertGateway.Notifications.IntegrationTests/PANiXiDA.TelegramAlertGateway.Notifications.IntegrationTests.csproj" />
-    <Project Path="tests/Module/PANiXiDA.TelegramAlertGateway.Notifications.UnitTests/PANiXiDA.TelegramAlertGateway.Notifications.UnitTests.csproj" />
+  <Folder Name="/tests/Notifications/">
+    <Project Path="tests/Notifications/PANiXiDA.TelegramAlertGateway.Notifications.FunctionalTests/PANiXiDA.TelegramAlertGateway.Notifications.FunctionalTests.csproj" />
+    <Project Path="tests/Notifications/PANiXiDA.TelegramAlertGateway.Notifications.IntegrationTests/PANiXiDA.TelegramAlertGateway.Notifications.IntegrationTests.csproj" />
+    <Project Path="tests/Notifications/PANiXiDA.TelegramAlertGateway.Notifications.UnitTests/PANiXiDA.TelegramAlertGateway.Notifications.UnitTests.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/PANiXiDA.TelegramAlertGateway.ArchitectureTests/PANiXiDA.TelegramAlertGateway.ArchitectureTests.csproj" />

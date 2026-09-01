@@ -1,7 +1,7 @@
 using JasperFx;
 
 using PANiXiDA.TelegramAlertGateway.Host.Common;
-using PANiXiDA.TelegramAlertGateway.Notifications.Infrastructure.DependencyInjection;
+using PANiXiDA.TelegramAlertGateway.Host.Configurations.Modules;
 using PANiXiDA.TelegramAlertGateway.Notifications.Infrastructure.Telemetry;
 using PANiXiDA.TelegramAlertGateway.Notifications.Presentation.DependencyInjection;
 
@@ -16,10 +16,7 @@ builder.WebHost.ConfigureKestrel(options =>
     options.Limits.MaxRequestBodySize = FilesConstants.FileRequestSizeLimit;
 });
 
-builder.Services.AddInfrastructure(builder.Configuration);
-builder.Services.AddPresentation(builder.Configuration);
-
-builder.Host.UseInfrastructure(builder.Configuration);
+builder.AddNotificationsModule();
 
 var app = builder.Build();
 

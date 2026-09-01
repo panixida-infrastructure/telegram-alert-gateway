@@ -15,9 +15,9 @@ COPY ["Directory.Packages.props", "."]
 COPY ["Directory.Build.props", "."]
 COPY ["Directory.Build.targets", "."]
 COPY ["tools/PANiXiDA.TelegramAlertGateway.Ef.Migrator/PANiXiDA.TelegramAlertGateway.Ef.Migrator.csproj", "tools/PANiXiDA.TelegramAlertGateway.Ef.Migrator/"]
-COPY ["src/Module/PANiXiDA.TelegramAlertGateway.Notifications.Infrastructure/PANiXiDA.TelegramAlertGateway.Notifications.Infrastructure.csproj", "src/Module/PANiXiDA.TelegramAlertGateway.Notifications.Infrastructure/"]
-COPY ["src/Module/PANiXiDA.TelegramAlertGateway.Notifications.Application/PANiXiDA.TelegramAlertGateway.Notifications.Application.csproj", "src/Module/PANiXiDA.TelegramAlertGateway.Notifications.Application/"]
-COPY ["src/Module/PANiXiDA.TelegramAlertGateway.Notifications.Domain/PANiXiDA.TelegramAlertGateway.Notifications.Domain.csproj", "src/Module/PANiXiDA.TelegramAlertGateway.Notifications.Domain/"]
+COPY ["src/Notifications/PANiXiDA.TelegramAlertGateway.Notifications.Infrastructure/PANiXiDA.TelegramAlertGateway.Notifications.Infrastructure.csproj", "src/Notifications/PANiXiDA.TelegramAlertGateway.Notifications.Infrastructure/"]
+COPY ["src/Notifications/PANiXiDA.TelegramAlertGateway.Notifications.Application/PANiXiDA.TelegramAlertGateway.Notifications.Application.csproj", "src/Notifications/PANiXiDA.TelegramAlertGateway.Notifications.Application/"]
+COPY ["src/Notifications/PANiXiDA.TelegramAlertGateway.Notifications.Domain/PANiXiDA.TelegramAlertGateway.Notifications.Domain.csproj", "src/Notifications/PANiXiDA.TelegramAlertGateway.Notifications.Domain/"]
 RUN dotnet restore "./tools/PANiXiDA.TelegramAlertGateway.Ef.Migrator/PANiXiDA.TelegramAlertGateway.Ef.Migrator.csproj"
 COPY . .
 WORKDIR "/src/tools/PANiXiDA.TelegramAlertGateway.Ef.Migrator"

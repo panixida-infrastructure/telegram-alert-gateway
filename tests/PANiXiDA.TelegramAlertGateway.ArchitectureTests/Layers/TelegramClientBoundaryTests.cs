@@ -6,8 +6,8 @@ namespace PANiXiDA.TelegramAlertGateway.ArchitectureTests.Layers;
 
 public sealed class TelegramClientBoundaryTests
 {
-    [Fact(DisplayName = "Telegram client is referenced only by infrastructure")]
-    public void TelegramClient_Should_Be_Referenced_Only_By_Infrastructure()
+    [Fact(DisplayName = "Telegram client should be referenced only by infrastructure when assemblies are validated")]
+    public void TelegramClient_Should_BeReferencedOnlyByInfrastructure_When_AssembliesAreValidated()
     {
         var outerAssemblies = new[]
         {

@@ -20,7 +20,7 @@ public sealed class PostgreSqlTestDatabase : IAsyncDisposable
         throw new InvalidOperationException("PostgreSQL test database is not initialized.");
 
     public async ValueTask InitializeAsync(
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken)
     {
         var configuredConnectionString = Environment.GetEnvironmentVariable(
             PostgreSqlConnectionStringEnvironmentVariable);

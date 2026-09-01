@@ -11,10 +11,10 @@
     </ItemGroup>
 
     <ItemGroup>
-        <ProjectReference Include="..\Module\PANiXiDA.TelegramAlertGateway.Notifications.Application\PANiXiDA.TelegramAlertGateway.Notifications.Application.csproj" />
-        <ProjectReference Include="..\Module\PANiXiDA.TelegramAlertGateway.Notifications.Domain\PANiXiDA.TelegramAlertGateway.Notifications.Domain.csproj" />
-        <ProjectReference Include="..\Module\PANiXiDA.TelegramAlertGateway.Notifications.Infrastructure\PANiXiDA.TelegramAlertGateway.Notifications.Infrastructure.csproj" />
-        <ProjectReference Include="..\Module\PANiXiDA.TelegramAlertGateway.Notifications.Presentation\PANiXiDA.TelegramAlertGateway.Notifications.Presentation.csproj" />
+        <ProjectReference Include="..\Notifications\PANiXiDA.TelegramAlertGateway.Notifications.Application\PANiXiDA.TelegramAlertGateway.Notifications.Application.csproj" />
+        <ProjectReference Include="..\Notifications\PANiXiDA.TelegramAlertGateway.Notifications.Domain\PANiXiDA.TelegramAlertGateway.Notifications.Domain.csproj" />
+        <ProjectReference Include="..\Notifications\PANiXiDA.TelegramAlertGateway.Notifications.Infrastructure\PANiXiDA.TelegramAlertGateway.Notifications.Infrastructure.csproj" />
+        <ProjectReference Include="..\Notifications\PANiXiDA.TelegramAlertGateway.Notifications.Presentation\PANiXiDA.TelegramAlertGateway.Notifications.Presentation.csproj" />
     </ItemGroup>
 
     <ItemGroup>

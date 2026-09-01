@@ -16,10 +16,10 @@ COPY ["Directory.Packages.props", "."]
 COPY ["Directory.Build.props", "."]
 COPY ["Directory.Build.targets", "."]
 COPY ["src/PANiXiDA.TelegramAlertGateway.Host/PANiXiDA.TelegramAlertGateway.Host.csproj", "src/PANiXiDA.TelegramAlertGateway.Host/"]
-COPY ["src/Module/PANiXiDA.TelegramAlertGateway.Notifications.Application/PANiXiDA.TelegramAlertGateway.Notifications.Application.csproj", "src/Module/PANiXiDA.TelegramAlertGateway.Notifications.Application/"]
-COPY ["src/Module/PANiXiDA.TelegramAlertGateway.Notifications.Domain/PANiXiDA.TelegramAlertGateway.Notifications.Domain.csproj", "src/Module/PANiXiDA.TelegramAlertGateway.Notifications.Domain/"]
-COPY ["src/Module/PANiXiDA.TelegramAlertGateway.Notifications.Infrastructure/PANiXiDA.TelegramAlertGateway.Notifications.Infrastructure.csproj", "src/Module/PANiXiDA.TelegramAlertGateway.Notifications.Infrastructure/"]
-COPY ["src/Module/PANiXiDA.TelegramAlertGateway.Notifications.Presentation/PANiXiDA.TelegramAlertGateway.Notifications.Presentation.csproj", "src/Module/PANiXiDA.TelegramAlertGateway.Notifications.Presentation/"]
+COPY ["src/Notifications/PANiXiDA.TelegramAlertGateway.Notifications.Application/PANiXiDA.TelegramAlertGateway.Notifications.Application.csproj", "src/Notifications/PANiXiDA.TelegramAlertGateway.Notifications.Application/"]
+COPY ["src/Notifications/PANiXiDA.TelegramAlertGateway.Notifications.Domain/PANiXiDA.TelegramAlertGateway.Notifications.Domain.csproj", "src/Notifications/PANiXiDA.TelegramAlertGateway.Notifications.Domain/"]
+COPY ["src/Notifications/PANiXiDA.TelegramAlertGateway.Notifications.Infrastructure/PANiXiDA.TelegramAlertGateway.Notifications.Infrastructure.csproj", "src/Notifications/PANiXiDA.TelegramAlertGateway.Notifications.Infrastructure/"]
+COPY ["src/Notifications/PANiXiDA.TelegramAlertGateway.Notifications.Presentation/PANiXiDA.TelegramAlertGateway.Notifications.Presentation.csproj", "src/Notifications/PANiXiDA.TelegramAlertGateway.Notifications.Presentation/"]
 RUN dotnet restore "./src/PANiXiDA.TelegramAlertGateway.Host/PANiXiDA.TelegramAlertGateway.Host.csproj"
 COPY . .
 WORKDIR "/src/src/PANiXiDA.TelegramAlertGateway.Host"

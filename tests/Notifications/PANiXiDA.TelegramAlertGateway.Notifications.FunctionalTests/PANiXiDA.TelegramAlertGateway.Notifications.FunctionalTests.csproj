@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+    <PropertyGroup>
+        <OutputType>Exe</OutputType>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Shouldly" />
+        <PackageReference Include="Microsoft.Testing.Extensions.CodeCoverage" />
+        <PackageReference Include="Microsoft.Testing.Extensions.TrxReport" />
+        <PackageReference Include="xunit.v3.mtp-v2" />
+        <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\..\..\src\PANiXiDA.TelegramAlertGateway.Host\PANiXiDA.TelegramAlertGateway.Host.csproj" />
+        <ProjectReference Include="..\..\..\src\Notifications\PANiXiDA.TelegramAlertGateway.Notifications.Domain\PANiXiDA.TelegramAlertGateway.Notifications.Domain.csproj" />
+        <ProjectReference Include="..\..\..\src\Notifications\PANiXiDA.TelegramAlertGateway.Notifications.Infrastructure\PANiXiDA.TelegramAlertGateway.Notifications.Infrastructure.csproj" />
+        <ProjectReference Include="..\..\..\src\Notifications\PANiXiDA.TelegramAlertGateway.Notifications.Presentation\PANiXiDA.TelegramAlertGateway.Notifications.Presentation.csproj" />
+        <ProjectReference Include="..\..\PANiXiDA.TelegramAlertGateway.Testing\PANiXiDA.TelegramAlertGateway.Testing.csproj" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <Using Include="Shouldly" />
+        <Using Include="Xunit" />
+
+        <Using Include="PANiXiDA.Core.Application.Querying.Pagination" />
+        <Using Include="PANiXiDA.Core.Application.Querying.Sorting" />
+
+        <Using Include="PANiXiDA.TelegramAlertGateway.Testing.Json" />
+    </ItemGroup>
+</Project>

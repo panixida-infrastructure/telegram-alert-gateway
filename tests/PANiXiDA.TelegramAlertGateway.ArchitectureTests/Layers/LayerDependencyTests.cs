@@ -6,36 +6,97 @@ namespace PANiXiDA.TelegramAlertGateway.ArchitectureTests.Layers;
 
 public sealed class LayerDependencyTests
 {
-    [Fact(DisplayName = "Domain layer should not depend on outer layers")]
-    public void DomainLayer_Should_Not_Depend_On_Outer_Layers()
+    [Fact(DisplayName = "Domain layer should not depend on outer layers when validated")]
+    public void DomainLayer_Should_NotDependOnOuterLayers_When_Validated()
     {
-        TypesShouldNotDependOn(ArchitectureDefinition.DomainLayer, ArchitectureDefinition.ApplicationLayer);
-        TypesShouldNotDependOn(ArchitectureDefinition.DomainLayer, ArchitectureDefinition.InfrastructureLayer);
-        TypesShouldNotDependOn(ArchitectureDefinition.DomainLayer, ArchitectureDefinition.PresentationLayer);
-        TypesShouldNotDependOn(ArchitectureDefinition.DomainLayer, ArchitectureDefinition.HostLayer);
+        var forbiddenDependencies = new[]
+        {
+            ArchitectureDefinition.ContractsLayer,
+            ArchitectureDefinition.ApplicationLayer,
+            ArchitectureDefinition.InfrastructureLayer,
+            ArchitectureDefinition.PresentationLayer,
+            ArchitectureDefinition.HostLayer
+        };
+
+        foreach (var forbiddenDependency in forbiddenDependencies)
+        {
+            TypesShouldNotDependOn(
+                ArchitectureDefinition.DomainLayer,
+                forbiddenDependency);
+        }
     }
 
-    [Fact(DisplayName = "Application layer should depend only on domain and shared abstractions")]
-    public void ApplicationLayer_Should_Depend_Only_On_Domain_And_Shared_Abstractions()
+    [Fact(DisplayName = "Contracts layer should not depend on module layers or host when validated")]
+    public void ContractsLayer_Should_NotDependOnModuleLayersOrHost_When_Validated()
     {
-        TypesShouldNotDependOn(ArchitectureDefinition.ApplicationLayer, ArchitectureDefinition.InfrastructureLayer);
-        TypesShouldNotDependOn(ArchitectureDefinition.ApplicationLayer, ArchitectureDefinition.PresentationLayer);
-        TypesShouldNotDependOn(ArchitectureDefinition.ApplicationLayer, ArchitectureDefinition.HostLayer);
+        var forbiddenDependencies = new[]
+        {
+            ArchitectureDefinition.DomainLayer,
+            ArchitectureDefinition.ApplicationLayer,
+            ArchitectureDefinition.InfrastructureLayer,
+            ArchitectureDefinition.PresentationLayer,
+            ArchitectureDefinition.HostLayer
+        };
+
+        foreach (var forbiddenDependency in forbiddenDependencies)
+        {
+            TypesShouldNotDependOn(
+                ArchitectureDefinition.ContractsLayer,
+                forbiddenDependency);
+        }
     }
 
-    [Fact(DisplayName = "Infrastructure layer should not depend on presentation or host")]
-    public void InfrastructureLayer_Should_Not_Depend_On_Presentation_Or_Host()
+    [Fact(DisplayName = "Application layer should depend only on domain and shared abstractions when validated")]
+    public void ApplicationLayer_Should_DependOnlyOnDomainAndSharedAbstractions_When_Validated()
     {
-        TypesShouldNotDependOn(ArchitectureDefinition.InfrastructureLayer, ArchitectureDefinition.PresentationLayer);
-        TypesShouldNotDependOn(ArchitectureDefinition.InfrastructureLayer, ArchitectureDefinition.HostLayer);
+        var forbiddenDependencies = new[]
+        {
+            ArchitectureDefinition.InfrastructureLayer,
+            ArchitectureDefinition.PresentationLayer,
+            ArchitectureDefinition.HostLayer
+        };
+
+        foreach (var forbiddenDependency in forbiddenDependencies)
+        {
+            TypesShouldNotDependOn(
+                ArchitectureDefinition.ApplicationLayer,
+                forbiddenDependency);
+        }
     }
 
-    [Fact(DisplayName = "Presentation layer should not depend on domain infrastructure or host")]
-    public void PresentationLayer_Should_Not_Depend_On_Domain_Infrastructure_Or_Host()
+    [Fact(DisplayName = "Infrastructure layer should not depend on presentation or host when validated")]
+    public void InfrastructureLayer_Should_NotDependOnPresentationOrHost_When_Validated()
     {
-        TypesShouldNotDependOn(ArchitectureDefinition.PresentationLayer, ArchitectureDefinition.DomainLayer);
-        TypesShouldNotDependOn(ArchitectureDefinition.PresentationLayer, ArchitectureDefinition.InfrastructureLayer);
-        TypesShouldNotDependOn(ArchitectureDefinition.PresentationLayer, ArchitectureDefinition.HostLayer);
+        var forbiddenDependencies = new[]
+        {
+            ArchitectureDefinition.PresentationLayer,
+            ArchitectureDefinition.HostLayer
+        };
+
+        foreach (var forbiddenDependency in forbiddenDependencies)
+        {
+            TypesShouldNotDependOn(
+                ArchitectureDefinition.InfrastructureLayer,
+                forbiddenDependency);
+        }
+    }
+
+    [Fact(DisplayName = "Presentation layer should not depend on domain infrastructure or host when validated")]
+    public void PresentationLayer_Should_NotDependOnDomainInfrastructureOrHost_When_Validated()
+    {
+        var forbiddenDependencies = new[]
+        {
+            ArchitectureDefinition.DomainLayer,
+            ArchitectureDefinition.InfrastructureLayer,
+            ArchitectureDefinition.HostLayer
+        };
+
+        foreach (var forbiddenDependency in forbiddenDependencies)
+        {
+            TypesShouldNotDependOn(
+                ArchitectureDefinition.PresentationLayer,
+                forbiddenDependency);
+        }
     }
 
     private static void TypesShouldNotDependOn(

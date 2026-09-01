@@ -4,23 +4,27 @@
         <CentralPackageTransitivePinningEnabled>true</CentralPackageTransitivePinningEnabled>
     </PropertyGroup>
     <ItemGroup>
+        <PackageVersion Include="Humanizer.Core" Version="3.0.10" />
         <PackageVersion Include="Microsoft.Testing.Extensions.CodeCoverage" Version="18.10.0" />
         <PackageVersion Include="Microsoft.Testing.Extensions.TrxReport" Version="2.3.3" />
         <PackageVersion Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.11" />
+        <PackageVersion Include="Microsoft.CodeAnalysis.CSharp" Version="5.0.0" />
+        <PackageVersion Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="5.0.0" />
+        <PackageVersion Include="Microsoft.CodeAnalysis.Workspaces.MSBuild" Version="5.0.0" />
         <PackageVersion Include="Microsoft.Extensions.Http" Version="10.0.3" />
         <PackageVersion Include="Microsoft.Extensions.Diagnostics.HealthChecks" Version="10.0.3" />
         <PackageVersion Include="NSubstitute" Version="6.2.0" />
         <PackageVersion Include="NSubstitute.Analyzers.CSharp" Version="1.0.17" />
         <PackageVersion Include="Npgsql" Version="10.0.3" />
-        <PackageVersion Include="PANiXiDA.Core.Application" Version="2.0.6" />
-        <PackageVersion Include="PANiXiDA.Core.Domain" Version="2.0.1" />
-        <PackageVersion Include="PANiXiDA.Core.Infrastructure.Messaging.Wolverine" Version="2.0.4" />
-        <PackageVersion Include="PANiXiDA.Core.Infrastructure.Persistence.Ef" Version="2.0.1" />
-        <PackageVersion Include="PANiXiDA.Core.Observability" Version="1.0.3" />
-        <PackageVersion Include="PANiXiDA.Core.Presentation.Http" Version="2.0.9" />
-        <PackageVersion Include="PANiXiDA.Core.ResultPattern" Version="1.0.2" />
-        <PackageVersion Include="PANiXiDA.Core.SpecificationPattern" Version="1.0.2" />
-        <PackageVersion Include="PANiXiDA.Core.Ef.Migrator" Version="1.0.3" />
+        <PackageVersion Include="PANiXiDA.Core.Application" Version="3.0.1" />
+        <PackageVersion Include="PANiXiDA.Core.Domain" Version="2.0.2" />
+        <PackageVersion Include="PANiXiDA.Core.Infrastructure.Messaging.Wolverine" Version="3.0.2" />
+        <PackageVersion Include="PANiXiDA.Core.Infrastructure.Persistence.Ef" Version="3.0.2" />
+        <PackageVersion Include="PANiXiDA.Core.Observability" Version="1.0.4" />
+        <PackageVersion Include="PANiXiDA.Core.Presentation.Http" Version="2.0.11" />
+        <PackageVersion Include="PANiXiDA.Core.ResultPattern" Version="1.0.4" />
+        <PackageVersion Include="PANiXiDA.Core.SpecificationPattern" Version="1.0.3" />
+        <PackageVersion Include="PANiXiDA.Core.Ef.Migrator" Version="1.0.4" />
         <PackageVersion Include="Respawn" Version="7.0.0" />
         <PackageVersion Include="Riok.Mapperly" Version="5.0.0-next.2" />
         <PackageVersion Include="Shouldly" Version="4.3.0" />

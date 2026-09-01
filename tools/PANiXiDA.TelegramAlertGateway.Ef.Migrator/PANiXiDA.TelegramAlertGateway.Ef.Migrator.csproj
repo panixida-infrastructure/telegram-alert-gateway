@@ -11,7 +11,7 @@
     </ItemGroup>
 
     <ItemGroup>
-        <ProjectReference Include="..\..\src\Module\PANiXiDA.TelegramAlertGateway.Notifications.Infrastructure\PANiXiDA.TelegramAlertGateway.Notifications.Infrastructure.csproj" />
+        <ProjectReference Include="..\..\src\Notifications\PANiXiDA.TelegramAlertGateway.Notifications.Infrastructure\PANiXiDA.TelegramAlertGateway.Notifications.Infrastructure.csproj" />
     </ItemGroup>
 
     <ItemGroup>
