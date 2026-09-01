@@ -1,8 +1,8 @@
 image:
   repository: ghcr.io/panixida-infrastructure/telegram-alert-gateway/api
-  tag: production-14
+  tag: production-15
 
 migrations:
   image:
     repository: ghcr.io/panixida-infrastructure/telegram-alert-gateway/ef-migrator
-    tag: production-14
+    tag: production-15
