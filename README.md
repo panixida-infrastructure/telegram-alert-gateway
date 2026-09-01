@@ -29,9 +29,9 @@ Topic and service names use lower-kebab-case. Current topics are:
 - `core-platform`;
 - `observability`;
 - `unclassified`;
-- `unclassified-tests`.
+- `tests`.
 
-Unmatched production alerts use `unclassified`. The `unclassified-tests` topic is
+Unmatched production alerts use `unclassified`. The `tests` topic is
 reserved for synthetic checks with an explicit owner.
 
 ## Architecture

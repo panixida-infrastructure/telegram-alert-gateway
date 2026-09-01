@@ -144,7 +144,7 @@ public sealed class NotificationRetentionCleanerTests(IntegrationTestFixture fix
     {
         return Notification.Create(
             CreateKey(key),
-            "unclassified-tests",
+            "tests",
             NotificationKind.LogEvent,
             key,
             createdAtUtc).Value;

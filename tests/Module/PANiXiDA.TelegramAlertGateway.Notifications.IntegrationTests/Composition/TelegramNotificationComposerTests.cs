@@ -75,7 +75,7 @@ public sealed class TelegramNotificationComposerTests(IntegrationTestFixture fix
 
     [Theory(DisplayName = "Explicit owner takes precedence over labels matching another route")]
     [InlineData("core-platform", "grafana")]
-    [InlineData("unclassified-tests", "telegram-alert-gateway-smoke")]
+    [InlineData("tests", "telegram-alert-gateway-smoke")]
     public void ComposeMetricAlerts_Should_Prioritize_Explicit_Owner_When_Labels_Match_Another_Route(
         string owner,
         string conflictingService)
@@ -161,7 +161,7 @@ public sealed class TelegramNotificationComposerTests(IntegrationTestFixture fix
             "log-smoke",
             "alert-gateway-smoke",
             "log-smoke",
-            "unclassified-tests",
+            "tests",
             "error",
             "Telegram alert gateway VictoriaLogs smoke test",
             null,
@@ -172,7 +172,7 @@ public sealed class TelegramNotificationComposerTests(IntegrationTestFixture fix
 
         var notification = composer.ComposeLogEvent(timestamp, logEvent);
 
-        notification.Topic.ShouldBe("unclassified-tests");
+        notification.Topic.ShouldBe("tests");
     }
 
     [Fact(DisplayName = "A later occurrence of the same alert gets a new notification key")]

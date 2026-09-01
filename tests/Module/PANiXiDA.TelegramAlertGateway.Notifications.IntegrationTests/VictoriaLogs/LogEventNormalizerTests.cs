@@ -96,13 +96,13 @@ public sealed class LogEventNormalizerTests(IntegrationTestFixture fixture)
                 ["_msg"] = "Telegram alert gateway VictoriaLogs smoke test",
                 ["severity_text"] = "Error",
                 ["service.name"] = "log-smoke",
-                ["alert_owner"] = "unclassified-tests"
+                ["alert_owner"] = "tests"
             }
         };
 
         var logEvent = normalizer.Normalize(records).ShouldHaveSingleItem();
 
-        logEvent.Owner.ShouldBe("unclassified-tests");
+        logEvent.Owner.ShouldBe("tests");
     }
 
     private static Dictionary<string, string> CreateRecord(

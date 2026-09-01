@@ -41,7 +41,7 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
                 ["AlertRouting:Rules:3:Topic"] = "core-platform",
                 ["AlertRouting:Rules:3:Matches:0"] = "core-platform",
                 ["AlertRouting:Rules:3:Matches:1"] = "csi-driver-timeweb-cloud",
-                ["AlertRouting:Rules:4:Topic"] = "unclassified-tests",
+                ["AlertRouting:Rules:4:Topic"] = "tests",
                 ["AlertRouting:Rules:4:Matches:0"] = "telegram-alert-gateway-smoke",
                 ["VictoriaLogs:Endpoint"] = "http://victorialogs.test",
                 ["VictoriaLogs:GrafanaLogsUrl"] = "https://grafana.panixida.ru",
