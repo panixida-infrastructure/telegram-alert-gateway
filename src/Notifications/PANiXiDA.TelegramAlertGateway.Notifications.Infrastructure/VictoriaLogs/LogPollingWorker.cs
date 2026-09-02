@@ -79,18 +79,21 @@ internal sealed class LogPollingWorker(
             endUtc: windowEnd,
             cancellationToken: cancellationToken);
         var events = normalizer.Normalize(records);
-        var mediator = scope.ServiceProvider.GetRequiredService<IMediator>();
-        var result = await mediator.SendAsync(
-            command: new QueueLogEventsCommand(
-                WindowStartUtc: windowStart,
-                Events: events,
-                ReceivedAtUtc: now),
-            cancellationToken: cancellationToken);
-
-        if (result.IsFailure)
+        if (events.Count > 0)
         {
-            throw new InvalidOperationException(
-                $"Log notification queueing failed: {string.Join("; ", result.Errors)}");
+            var mediator = scope.ServiceProvider.GetRequiredService<IMediator>();
+            var result = await mediator.SendAsync(
+                command: new QueueLogEventsCommand(
+                    WindowStartUtc: windowStart,
+                    Events: events,
+                    ReceivedAtUtc: now),
+                cancellationToken: cancellationToken);
+
+            if (result.IsFailure)
+            {
+                throw new InvalidOperationException(
+                    $"Log notification queueing failed: {string.Join("; ", result.Errors)}");
+            }
         }
 
         if (checkpoint is null)
