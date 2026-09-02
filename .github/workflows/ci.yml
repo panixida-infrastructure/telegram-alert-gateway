@@ -76,10 +76,14 @@ jobs:
   notify:
     if: ${{ always() && github.event_name != 'pull_request' && (github.ref_name == 'main' || github.ref_name == 'development') }}
     needs: [ build-api, build-migrator ]
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: read
     uses: PANiXiDA-Infrastructure/ci-cd/.github/workflows/notify-telegram.yml@main
     with:
       event-name: ${{ github.event_name }}
     secrets:
       telegram-bot-token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
       telegram-chat-id: ${{ vars.TELEGRAM_CHAT_ID }}
-      github-token: ${{ secrets.REGISTRY_TOKEN }}
+      github-token: ${{ secrets.GITHUB_TOKEN }}
