@@ -100,14 +100,16 @@ internal static partial class StructuredLogRecordParser
         string value,
         IDictionary<string, string> fields)
     {
-        foreach (Match match in KeyValueFieldRegex().Matches(value))
+        foreach (var groups in KeyValueFieldRegex()
+                     .Matches(value)
+                     .Select(match => match.Groups))
         {
-            var fieldValue = match.Groups["quoted"].Success
-                ? Unescape(match.Groups["quoted"].Value)
-                : match.Groups["unquoted"].Value;
+            var fieldValue = groups["quoted"].Success
+                ? Unescape(groups["quoted"].Value)
+                : groups["unquoted"].Value;
             if (!string.IsNullOrWhiteSpace(fieldValue))
             {
-                fields.TryAdd(match.Groups["name"].Value, fieldValue);
+                fields.TryAdd(groups["name"].Value, fieldValue);
             }
         }
     }

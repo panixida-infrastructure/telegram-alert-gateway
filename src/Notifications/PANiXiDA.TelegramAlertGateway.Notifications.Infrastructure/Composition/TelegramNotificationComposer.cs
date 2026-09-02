@@ -21,6 +21,8 @@ internal sealed class TelegramNotificationComposer(
     private const string Separator = "────────────";
     private const string ResolvedStatus = "resolved";
     private const string LinkOpeningTag = "🔗 <a href=\"";
+    private const string PreformattedTextOpeningTag = "<pre>";
+    private const string PreformattedTextClosingTag = "</pre>";
     private const string VictoriaLogsDataSourceType = "victoriametrics-logs-datasource";
     private const string VictoriaLogsDataSourceUid = "victorialogs";
     private const int MaxAlertBlockLength = 2600;
@@ -205,16 +207,16 @@ internal sealed class TelegramNotificationComposer(
         }
 
         message.AppendLine();
-        message.Append("<pre>")
+        message.Append(PreformattedTextOpeningTag)
             .Append(HtmlTruncate(logEvent.Message, messageBudget))
-            .AppendLine("</pre>");
+            .AppendLine(PreformattedTextClosingTag);
 
         if (fieldsBudget > 0 && logEvent.Fields.Count > 0)
         {
             message.AppendLine("🏷 <b>Fields</b>")
-                .Append("<pre>")
+                .Append(PreformattedTextOpeningTag)
                 .Append(HtmlTruncate(FormatFields(logEvent.Fields), fieldsBudget))
-                .AppendLine("</pre>");
+                .AppendLine(PreformattedTextClosingTag);
         }
 
         if (!string.IsNullOrWhiteSpace(logEvent.ExceptionType))
@@ -226,9 +228,9 @@ internal sealed class TelegramNotificationComposer(
 
         if (stackTraceBudget > 0 && !string.IsNullOrWhiteSpace(logEvent.StackTrace))
         {
-            message.Append("<pre>")
+            message.Append(PreformattedTextOpeningTag)
                 .Append(HtmlTruncate(logEvent.StackTrace, stackTraceBudget))
-                .AppendLine("</pre>");
+                .AppendLine(PreformattedTextClosingTag);
         }
 
         if (!string.IsNullOrWhiteSpace(logEvent.TraceId))
@@ -377,9 +379,9 @@ internal sealed class TelegramNotificationComposer(
 
         if (!string.IsNullOrWhiteSpace(description))
         {
-            builder.Append("<pre>")
+            builder.Append(PreformattedTextOpeningTag)
                 .Append(Html(Truncate(description, 850)))
-                .AppendLine("</pre>");
+                .AppendLine(PreformattedTextClosingTag);
         }
 
         if (!string.IsNullOrWhiteSpace(dashboardUrl))
