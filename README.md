@@ -10,13 +10,16 @@ and sends messages through `Telegram.Bot`.
   `POST /api/v1/webhooks/alertmanager` with a bearer token.
 - Metric alerts preserve `firing` and `resolved` states. Large groups are split into
   multiple Telegram messages; alerts are never silently omitted.
-- The gateway polls completed VictoriaLogs windows for error events. The configured
-  window duration is also used for aggregation counts shown in Telegram.
-- Repeated copies of one normalized error are combined into one message with an
-  occurrence count. Different errors remain separate messages.
+- The gateway polls completed VictoriaLogs windows for error events. Repeated copies
+  of one normalized error are combined into one message with an `At least N matching
+  events` count and explicit window boundaries. Copies received through multiple
+  ingestion paths are not counted twice; different errors remain separate messages.
 - A log message includes service, Kubernetes namespace/container, error text,
-  exception type, the top of the stack trace, trace id, and a Grafana Logs link when
-  those fields are present.
+  exception type, the top of the stack trace, trace id, generic structured fields,
+  and a Grafana Logs link narrowed to the source stream and aggregation window when
+  those values are present. Values whose field names indicate secrets or credentials
+  are redacted before Telegram rendering. Optional sections are reduced before the
+  message can exceed Telegram's delivery limit.
 - An idempotency key and a PostgreSQL unique constraint suppress webhook retries and
   repeated processing of the same log window.
 - Telegram traffic prefers the WireGuard-backed `telegram-vpn` HTTP proxy and falls

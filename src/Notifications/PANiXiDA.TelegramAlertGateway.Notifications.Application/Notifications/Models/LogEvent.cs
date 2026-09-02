@@ -11,5 +11,7 @@ public sealed record LogEvent(
     string? ExceptionType,
     string? StackTrace,
     string? TraceId,
+    IReadOnlyDictionary<string, string> Fields,
     string Fingerprint,
-    int Occurrences);
+    int Occurrences,
+    string? StreamId = null);

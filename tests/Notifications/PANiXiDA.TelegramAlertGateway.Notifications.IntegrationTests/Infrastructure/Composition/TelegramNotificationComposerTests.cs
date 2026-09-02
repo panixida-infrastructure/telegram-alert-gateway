@@ -1,3 +1,5 @@
+using System.Globalization;
+
 using Microsoft.Extensions.DependencyInjection;
 
 using PANiXiDA.TelegramAlertGateway.Notifications.Application.Notifications.Abstractions;
@@ -117,6 +119,7 @@ public sealed class TelegramNotificationComposerTests(IntegrationTestFixture fix
             null,
             null,
             null,
+            new Dictionary<string, string>(),
             "timeweb-csi-fingerprint",
             1);
 
@@ -148,6 +151,7 @@ public sealed class TelegramNotificationComposerTests(IntegrationTestFixture fix
             null,
             null,
             null,
+            new Dictionary<string, string>(),
             $"{service}-fingerprint",
             1);
 
@@ -173,6 +177,7 @@ public sealed class TelegramNotificationComposerTests(IntegrationTestFixture fix
             null,
             null,
             null,
+            new Dictionary<string, string>(),
             "unknown-fingerprint",
             1);
 
@@ -198,12 +203,54 @@ public sealed class TelegramNotificationComposerTests(IntegrationTestFixture fix
             null,
             null,
             null,
+            new Dictionary<string, string>(),
             "log-smoke-fingerprint",
             1);
 
         var notification = composer.ComposeLogEvent(timestamp, logEvent);
 
         notification.Topic.ShouldBe("tests");
+    }
+
+    [Fact(DisplayName = "Compose log event should render generic fields when fields are available")]
+    public void ComposeLogEvent_Should_RenderGenericFields_When_FieldsAreAvailable()
+    {
+        using var scope = Fixture.CreateScope();
+        var composer = scope.ServiceProvider.GetRequiredService<INotificationComposer>();
+        var timestamp = new DateTimeOffset(2026, 9, 2, 17, 8, 33, TimeSpan.Zero);
+        var logEvent = new LogEvent(
+            Timestamp: timestamp,
+            Service: "grafana",
+            Namespace: "observability",
+            Container: "grafana",
+            Owner: null,
+            Severity: "error",
+            Message: "Failed to read data sources",
+            ExceptionType: null,
+            StackTrace: null,
+            TraceId: null,
+            Fields: new Dictionary<string, string>
+            {
+                ["logger"] = "infra.usagestats.collector",
+                ["error"] = "plugin <not found>"
+            },
+            Fingerprint: "grafana-structured-fields",
+            Occurrences: 1,
+            StreamId: "0000007b000001c850d9950ea6196b1a4812081265faa1c7");
+
+        var notification = composer.ComposeLogEvent(timestamp, logEvent);
+
+        notification.Message.ShouldContain("🏷 <b>Fields</b>");
+        notification.Message.ShouldContain("error: plugin &lt;not found&gt;");
+        notification.Message.ShouldContain("logger: infra.usagestats.collector");
+        notification.Message.IndexOf("error:", StringComparison.Ordinal)
+            .ShouldBeLessThan(notification.Message.IndexOf("logger:", StringComparison.Ordinal));
+        notification.Message.ShouldContain("Logs for this source and window");
+        notification.Message.ShouldContain(
+            "_stream_id%3A0000007b000001c850d9950ea6196b1a4812081265faa1c7");
+        notification.Message.ShouldContain(
+            timestamp.ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture));
+        notification.Message.Length.ShouldBeLessThanOrEqualTo(NotificationMessage.MaxLength);
     }
 
     [Fact(DisplayName = "Compose log event should render configured log window when event is composed")]
@@ -223,13 +270,48 @@ public sealed class TelegramNotificationComposerTests(IntegrationTestFixture fix
             null,
             null,
             null,
+            new Dictionary<string, string>(),
             "metrics-server-timeout",
             5);
 
         var notification = composer.ComposeLogEvent(windowStart, logEvent);
 
         notification.Message.ShouldContain(
-            "repeated <b>5 times</b> in a 1-minute log window");
+            "At least <b>5 matching events</b> in the 1-minute window "
+            + "2026-09-01 17:46:00–2026-09-01 17:47:00 UTC");
+    }
+
+    [Fact(DisplayName = "Compose log event should stay within Telegram limit when encoded content is long")]
+    public void ComposeLogEvent_Should_StayWithinTelegramLimit_When_EncodedContentIsLong()
+    {
+        using var scope = Fixture.CreateScope();
+        var composer = scope.ServiceProvider.GetRequiredService<INotificationComposer>();
+        var windowStart = new DateTimeOffset(2026, 9, 2, 20, 0, 0, TimeSpan.Zero);
+        var encodedContent = string.Concat(Enumerable.Repeat("<&>\"'", 1000));
+        var logEvent = new LogEvent(
+            Timestamp: windowStart.AddSeconds(20),
+            Service: encodedContent,
+            Namespace: encodedContent,
+            Container: encodedContent,
+            Owner: null,
+            Severity: "error",
+            Message: encodedContent,
+            ExceptionType: encodedContent,
+            StackTrace: encodedContent,
+            TraceId: encodedContent,
+            Fields: new Dictionary<string, string>
+            {
+                ["UserId"] = encodedContent,
+                ["UserName"] = encodedContent
+            },
+            Fingerprint: "long-encoded-content",
+            Occurrences: 3,
+            StreamId: "0000007b000001c850d9950ea6196b1a4812081265faa1c7");
+
+        var notification = composer.ComposeLogEvent(windowStart, logEvent);
+
+        notification.Message.Length.ShouldBeLessThanOrEqualTo(NotificationMessage.MaxLength);
+        notification.Message.ShouldContain("Logs for this source and window");
     }
 
     [Fact(DisplayName = "Compose log event should create new key for next window when same error repeats")]
@@ -249,6 +331,7 @@ public sealed class TelegramNotificationComposerTests(IntegrationTestFixture fix
             null,
             null,
             null,
+            new Dictionary<string, string>(),
             "metrics-server-timeout",
             5);
 

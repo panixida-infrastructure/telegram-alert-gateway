@@ -15,6 +15,67 @@ public sealed partial class LogEventNormalizer(
     IOptions<VictoriaLogsOptions> options,
     TimeProvider timeProvider)
 {
+    private const string RedactedFieldValue = "[REDACTED]";
+    private static readonly HashSet<string> ReservedFieldNames = new(
+        [
+            "_msg",
+            "_seq",
+            "_stream",
+            "_stream_id",
+            "_tenant_id",
+            "_time",
+            "alert_owner",
+            "app",
+            "body",
+            "container",
+            "deployment.environment",
+            "exception.stack_trace",
+            "exception.stacktrace",
+            "exception.type",
+            "exception_type",
+            "k8s.container.name",
+            "k8s.namespace.name",
+            "klog_level",
+            "kubernetes.container_name",
+            "kubernetes.namespace_name",
+            "level",
+            "log.level",
+            "LogLevel",
+            "message",
+            "msg",
+            "namespace",
+            "owner",
+            "service",
+            "service.name",
+            "service_name",
+            "severity",
+            "severity_text",
+            "stack_trace",
+            "StackTrace",
+            "t",
+            "time",
+            "timestamp",
+            "trace.id",
+            "trace_id"
+        ],
+        StringComparer.OrdinalIgnoreCase);
+    private static readonly string[] SensitiveFieldNameFragments =
+    [
+        "api_key",
+        "apikey",
+        "authorization",
+        "connection_string",
+        "connectionstring",
+        "cookie",
+        "credential",
+        "password",
+        "passwd",
+        "private_key",
+        "privatekey",
+        "secret",
+        "token"
+    ];
+
     private readonly VictoriaLogsOptions _options = options.Value;
     private readonly TimeProvider _timeProvider = timeProvider;
 
@@ -28,17 +89,21 @@ public sealed partial class LogEventNormalizer(
             .GroupBy(item => item.Fingerprint, StringComparer.Ordinal)
             .Select(group =>
             {
-                var preferred = group
+                var sourceGroup = group
+                    .GroupBy(CreateSourceIdentity, StringComparer.Ordinal)
+                    .OrderByDescending(item => item.Count())
+                    .ThenByDescending(item => item.Any(logEvent =>
+                        !string.IsNullOrWhiteSpace(logEvent.TraceId)))
+                    .ThenByDescending(item => item.Any(logEvent =>
+                        !string.IsNullOrWhiteSpace(logEvent.ExceptionType)))
+                    .First();
+                var preferred = sourceGroup
                     .OrderByDescending(item => !string.IsNullOrWhiteSpace(item.TraceId))
                     .ThenByDescending(item => !string.IsNullOrWhiteSpace(item.ExceptionType))
                     .ThenByDescending(item => item.Message.Length)
                     .First();
 
-                var occurrences = group
-                    .GroupBy(CreateSourceIdentity, StringComparer.Ordinal)
-                    .Max(sourceGroup => sourceGroup.Count());
-
-                return preferred with { Occurrences = occurrences };
+                return preferred with { Occurrences = sourceGroup.Count() };
             })
             .OrderBy(item => item.Service, StringComparer.Ordinal)
             .ThenBy(item => item.Fingerprint, StringComparer.Ordinal)
@@ -47,11 +112,16 @@ public sealed partial class LogEventNormalizer(
 
     private LogEvent? TryNormalize(IReadOnlyDictionary<string, string> fields)
     {
-        var message = GetValue(fields, "_msg", "body", "message", "Message");
-        if (string.IsNullOrWhiteSpace(message))
+        var rawMessage = GetValue(fields, "_msg", "body", "message", "Message");
+        if (string.IsNullOrWhiteSpace(rawMessage))
         {
             return null;
         }
+
+        var parsedRecord = StructuredLogRecordParser.Parse(rawMessage);
+        var message = GetValue(fields, "message", "Message", "msg")
+            ?? parsedRecord.Message
+            ?? rawMessage;
 
         var severity = GetValue(
             fields,
@@ -113,7 +183,7 @@ public sealed partial class LogEventNormalizer(
             service: service,
             namespaceName: namespaceName,
             exceptionType: exceptionType,
-            message: message);
+            message: rawMessage);
 
         return new LogEvent(
             Timestamp: timestamp,
@@ -126,8 +196,46 @@ public sealed partial class LogEventNormalizer(
             ExceptionType: exceptionType,
             StackTrace: stackTrace,
             TraceId: traceId,
+            Fields: CreateStructuredFields(fields, parsedRecord.Fields),
             Fingerprint: fingerprint,
-            Occurrences: 1);
+            Occurrences: 1,
+            StreamId: GetValue(fields, "_stream_id"));
+    }
+
+    private static IReadOnlyDictionary<string, string> CreateStructuredFields(
+        IReadOnlyDictionary<string, string> sourceFields,
+        IReadOnlyDictionary<string, string> parsedFields)
+    {
+        var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        AddStructuredFields(result, sourceFields);
+        AddStructuredFields(result, parsedFields);
+        return result;
+    }
+
+    private static void AddStructuredFields(
+        IDictionary<string, string> destination,
+        IReadOnlyDictionary<string, string> source)
+    {
+        foreach (var field in source)
+        {
+            if (string.IsNullOrWhiteSpace(field.Key)
+                || string.IsNullOrWhiteSpace(field.Value)
+                || ReservedFieldNames.Contains(field.Key))
+            {
+                continue;
+            }
+
+            var value = IsSensitiveFieldName(field.Key)
+                ? RedactedFieldValue
+                : field.Value.Trim();
+            destination.TryAdd(field.Key, value);
+        }
+    }
+
+    private static bool IsSensitiveFieldName(string fieldName)
+    {
+        return SensitiveFieldNameFragments.Any(fragment =>
+            fieldName.Contains(fragment, StringComparison.OrdinalIgnoreCase));
     }
 
     private static bool IsError(string? severity)

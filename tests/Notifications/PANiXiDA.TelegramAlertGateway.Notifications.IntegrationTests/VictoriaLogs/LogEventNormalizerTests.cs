@@ -179,6 +179,71 @@ public sealed class LogEventNormalizerTests(IntegrationTestFixture fixture)
         events.Count.ShouldBe(failures.Length);
     }
 
+    [Fact(DisplayName = "Normalize should preserve generic fields when log uses logfmt")]
+    public void Normalize_Should_PreserveGenericFields_When_LogUsesLogfmt()
+    {
+        using var scope = Fixture.CreateScope();
+        var normalizer = scope.ServiceProvider.GetRequiredService<LogEventNormalizer>();
+        var records = new IReadOnlyDictionary<string, string>[]
+        {
+            new Dictionary<string, string>
+            {
+                ["_time"] = "2026-09-02T17:08:33Z",
+                ["_msg"] = "logger=infra.usagestats.collector t=2026-09-02T17:08:33Z level=error msg=\"Failed to read data sources\" error=\"plugin not found\"",
+                ["_stream"] = "{service.name=\"grafana\"}",
+                ["_stream_id"] = "0000007b000001c850d9950ea6196b1a4812081265faa1c7",
+                ["severity_text"] = "Error",
+                ["service.name"] = "grafana",
+                ["k8s.namespace.name"] = "observability",
+                ["k8s.container.name"] = "grafana",
+                ["k8s.pod.name"] = "grafana-0",
+                ["UserId"] = "42",
+                ["access_token"] = "should-not-be-rendered"
+            }
+        };
+
+        var logEvent = normalizer.Normalize(records).ShouldHaveSingleItem();
+
+        logEvent.Message.ShouldBe("Failed to read data sources");
+        logEvent.Fields["logger"].ShouldBe("infra.usagestats.collector");
+        logEvent.Fields["error"].ShouldBe("plugin not found");
+        logEvent.Fields["k8s.pod.name"].ShouldBe("grafana-0");
+        logEvent.Fields["UserId"].ShouldBe("42");
+        logEvent.Fields["access_token"].ShouldBe("[REDACTED]");
+        logEvent.StreamId.ShouldBe("0000007b000001c850d9950ea6196b1a4812081265faa1c7");
+        logEvent.Fields.ContainsKey("_stream").ShouldBeFalse();
+        logEvent.Fields.ContainsKey("_stream_id").ShouldBeFalse();
+        logEvent.Fields.ContainsKey("severity_text").ShouldBeFalse();
+    }
+
+    [Fact(DisplayName = "Normalize should parse generic fields when log uses klog")]
+    public void Normalize_Should_ParseGenericFields_When_LogUsesKlog()
+    {
+        using var scope = Fixture.CreateScope();
+        var normalizer = scope.ServiceProvider.GetRequiredService<LogEventNormalizer>();
+        var records = new IReadOnlyDictionary<string, string>[]
+        {
+            new Dictionary<string, string>
+            {
+                ["_time"] = "2026-09-02T16:39:26Z",
+                ["_msg"] = "E0902 16:39:26.838894 1 reflector.go:205] \"Failed to watch\" err=\"failed to list *v1.Node: connection refused\" logger=\"UnhandledError\" reflector=\"k8s.io/client-go/tools/cache/reflector.go:290\" type=\"*v1.Node\"",
+                ["severity_text"] = "Error",
+                ["service.name"] = "otel-collector",
+                ["k8s.namespace.name"] = "observability",
+                ["k8s.container.name"] = "otel-collector"
+            }
+        };
+
+        var logEvent = normalizer.Normalize(records).ShouldHaveSingleItem();
+
+        logEvent.Message.ShouldBe("Failed to watch");
+        logEvent.Fields["klog.source"].ShouldBe("reflector.go:205");
+        logEvent.Fields["err"].ShouldContain("connection refused");
+        logEvent.Fields["logger"].ShouldBe("UnhandledError");
+        logEvent.Fields["reflector"].ShouldBe("k8s.io/client-go/tools/cache/reflector.go:290");
+        logEvent.Fields["type"].ShouldBe("*v1.Node");
+    }
+
     private static Dictionary<string, string> CreateRecord(
         string timestamp,
         string message,

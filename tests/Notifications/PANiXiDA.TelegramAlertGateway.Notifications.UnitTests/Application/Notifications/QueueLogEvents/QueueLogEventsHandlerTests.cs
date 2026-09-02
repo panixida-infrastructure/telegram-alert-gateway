@@ -24,6 +24,7 @@ public sealed class QueueLogEventsHandlerTests
             ExceptionType: null,
             StackTrace: null,
             TraceId: null,
+            Fields: new Dictionary<string, string>(),
             Fingerprint: new string('a', 64),
             Occurrences: 1);
         composer.ComposeLogEvent(
