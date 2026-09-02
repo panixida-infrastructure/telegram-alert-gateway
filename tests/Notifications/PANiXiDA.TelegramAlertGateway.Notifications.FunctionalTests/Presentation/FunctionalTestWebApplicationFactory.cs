@@ -1,6 +1,8 @@
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 
 using Wolverine;
@@ -10,6 +12,9 @@ namespace PANiXiDA.TelegramAlertGateway.Notifications.FunctionalTests.Presentati
 internal sealed class FunctionalTestWebApplicationFactory
     : WebApplicationFactory<Program>
 {
+    private static readonly TimeProvider FixedTimeProvider = new TestTimeProvider(
+        new DateTimeOffset(2026, 8, 30, 10, 1, 0, TimeSpan.Zero));
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.ConfigureAppConfiguration(configuration =>
@@ -23,6 +28,9 @@ internal sealed class FunctionalTestWebApplicationFactory
         });
         builder.ConfigureServices(services =>
         {
+            services.RemoveAll<TimeProvider>();
+            services.AddSingleton(FixedTimeProvider);
+
             var gatewayWorkers = services
                 .Where(descriptor =>
                     descriptor.ServiceType == typeof(IHostedService)
@@ -38,5 +46,13 @@ internal sealed class FunctionalTestWebApplicationFactory
 
             services.RunWolverineInSoloMode();
         });
+    }
+
+    private sealed class TestTimeProvider(DateTimeOffset utcNow) : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow()
+        {
+            return utcNow;
+        }
     }
 }
