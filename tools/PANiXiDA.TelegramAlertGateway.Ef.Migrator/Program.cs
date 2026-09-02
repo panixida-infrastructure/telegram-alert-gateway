@@ -1,4 +1,6 @@
 ﻿using Microsoft.Extensions.Configuration;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 
 using PANiXiDA.TelegramAlertGateway.Notifications.Infrastructure.Persistence.Core;
@@ -16,4 +18,6 @@ using var host = Host.CreateDefaultBuilder(args)
         })
     .Build();
 
-await host.RunMigrationsAsync<NotificationsWriteDbContext>();
+await using var scope = host.Services.CreateAsyncScope();
+var dbContext = scope.ServiceProvider.GetRequiredService<NotificationsWriteDbContext>();
+await dbContext.Database.MigrateAsync();

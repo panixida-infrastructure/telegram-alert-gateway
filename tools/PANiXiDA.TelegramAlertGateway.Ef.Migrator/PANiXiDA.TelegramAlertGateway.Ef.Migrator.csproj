@@ -7,16 +7,10 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <PackageReference Include="PANiXiDA.Core.Ef.Migrator" />
-    </ItemGroup>
-
-    <ItemGroup>
         <ProjectReference Include="..\..\src\Notifications\PANiXiDA.TelegramAlertGateway.Notifications.Infrastructure\PANiXiDA.TelegramAlertGateway.Notifications.Infrastructure.csproj" />
     </ItemGroup>
 
     <ItemGroup>
-        <Using Include="PANiXiDA.Core.Ef.Migrator" />
-
         <Using Include="PANiXiDA.Core.Infrastructure.Persistence.Ef.DependencyInjection" />
     </ItemGroup>
 

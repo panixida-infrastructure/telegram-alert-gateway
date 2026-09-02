@@ -24,7 +24,6 @@
         <PackageVersion Include="PANiXiDA.Core.Presentation.Http" Version="2.0.11" />
         <PackageVersion Include="PANiXiDA.Core.ResultPattern" Version="1.0.4" />
         <PackageVersion Include="PANiXiDA.Core.SpecificationPattern" Version="1.0.3" />
-        <PackageVersion Include="PANiXiDA.Core.Ef.Migrator" Version="1.0.4" />
         <PackageVersion Include="Respawn" Version="7.0.0" />
         <PackageVersion Include="Riok.Mapperly" Version="5.0.0-next.2" />
         <PackageVersion Include="Shouldly" Version="4.3.0" />
