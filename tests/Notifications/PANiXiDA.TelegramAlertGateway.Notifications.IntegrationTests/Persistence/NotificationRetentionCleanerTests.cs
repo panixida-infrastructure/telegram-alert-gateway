@@ -31,7 +31,7 @@ public sealed class NotificationRetentionCleanerTests(IntegrationTestFixture fix
             CreatePending("old-pending", now.AddDays(-60)),
             CreateProcessing("old-processing", now.AddDays(-60))
         };
-        dbContext.Notifications.AddRange(notifications);
+        dbContext.Set<Notification>().AddRange(notifications);
         await dbContext.SaveChangesAsync(TestContext.Current.CancellationToken);
         var cleaner = scope.ServiceProvider.GetRequiredService<NotificationRetentionCleaner>();
 
@@ -41,7 +41,7 @@ public sealed class NotificationRetentionCleanerTests(IntegrationTestFixture fix
 
         result.SentDeleted.ShouldBe(3);
         result.FailedDeleted.ShouldBe(1);
-        var remainingKeys = (await dbContext.Notifications
+        var remainingKeys = (await dbContext.Set<Notification>()
             .AsNoTracking()
             .Select(item => item.Key)
             .ToArrayAsync(TestContext.Current.CancellationToken))
@@ -64,7 +64,7 @@ public sealed class NotificationRetentionCleanerTests(IntegrationTestFixture fix
         var now = DateTimeOffset.UtcNow;
         await using var scope = Fixture.CreateScope();
         var dbContext = scope.ServiceProvider.GetRequiredService<NotificationsWriteDbContext>();
-        dbContext.Notifications.Add(CreateSent(
+        dbContext.Set<Notification>().Add(CreateSent(
             "worker-expired-sent",
             now.AddDays(-16),
             now.AddDays(-15)));
@@ -83,7 +83,7 @@ public sealed class NotificationRetentionCleanerTests(IntegrationTestFixture fix
             for (var attempt = 0; attempt < 50; attempt++)
             {
                 dbContext.ChangeTracker.Clear();
-                deleted = !await dbContext.Notifications
+                deleted = !await dbContext.Set<Notification>()
                     .AsNoTracking()
                     .AnyAsync(TestContext.Current.CancellationToken);
                 if (deleted)

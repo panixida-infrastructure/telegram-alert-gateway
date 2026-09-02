@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
+using PANiXiDA.TelegramAlertGateway.Notifications.Domain.Notifications;
 using PANiXiDA.TelegramAlertGateway.Notifications.Domain.Notifications.Enumerations;
 using PANiXiDA.TelegramAlertGateway.Notifications.Infrastructure.Persistence.Core;
 
@@ -51,7 +52,7 @@ internal sealed class NotificationDeliveryWorker(
         var dbContext = scope.ServiceProvider.GetRequiredService<NotificationsWriteDbContext>();
         var now = timeProvider.GetUtcNow();
         var staleProcessingThreshold = now.AddMinutes(-5);
-        var notification = await dbContext.Notifications
+        var notification = await dbContext.Set<Notification>()
             .Where(item =>
                 (item.Delivery.Status == NotificationStatus.Pending &&
                  item.Delivery.AvailableAtUtc <= now)

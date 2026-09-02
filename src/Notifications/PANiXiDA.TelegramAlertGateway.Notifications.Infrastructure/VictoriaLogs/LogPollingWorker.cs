@@ -22,17 +22,18 @@ internal sealed class LogPollingWorker(
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        using var timer = new PeriodicTimer(
+            TimeSpan.FromSeconds(_options.PollIntervalSeconds),
+            timeProvider);
+
         while (!stoppingToken.IsCancellationRequested)
         {
             try
             {
-                var processed = await ProcessNextWindowAsync(stoppingToken);
-                if (!processed)
+                var processed = true;
+                while (processed)
                 {
-                    await Task.Delay(
-                        delay: TimeSpan.FromSeconds(_options.PollIntervalSeconds),
-                        timeProvider: timeProvider,
-                        cancellationToken: stoppingToken);
+                    processed = await ProcessNextWindowAsync(stoppingToken);
                 }
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
@@ -42,10 +43,11 @@ internal sealed class LogPollingWorker(
             catch (Exception exception)
             {
                 logger.LogError(exception, "VictoriaLogs polling failed.");
-                await Task.Delay(
-                    delay: TimeSpan.FromSeconds(_options.PollIntervalSeconds),
-                    timeProvider: timeProvider,
-                    cancellationToken: stoppingToken);
+            }
+
+            if (!await timer.WaitForNextTickAsync(stoppingToken))
+            {
+                break;
             }
         }
     }
@@ -61,7 +63,8 @@ internal sealed class LogPollingWorker(
             ingestionCutoff.UtcTicks / windowSize.Ticks * windowSize.Ticks,
             TimeSpan.Zero);
 
-        var checkpoint = await dbContext.LogIngestionCheckpoints
+        var checkpoints = dbContext.Set<LogIngestionCheckpoint>();
+        var checkpoint = await checkpoints
             .SingleOrDefaultAsync(item => item.Id == CheckpointId, cancellationToken);
         var windowStart = checkpoint?.NextWindowStartUtc
             ?? latestCompleteWindowEnd.Subtract(windowSize);
@@ -99,7 +102,7 @@ internal sealed class LogPollingWorker(
         if (checkpoint is null)
         {
             checkpoint = new LogIngestionCheckpoint(CheckpointId, windowEnd);
-            dbContext.LogIngestionCheckpoints.Add(checkpoint);
+            checkpoints.Add(checkpoint);
         }
         else
         {

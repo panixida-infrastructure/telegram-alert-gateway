@@ -25,7 +25,7 @@ public sealed class NotificationsRepository
         NotificationKey key,
         CancellationToken cancellationToken)
     {
-        return _dbContext.Notifications.FirstOrDefaultAsync(
+        return _dbContext.Set<Notification>().FirstOrDefaultAsync(
             predicate: item => item.Key == key,
             cancellationToken: cancellationToken);
     }

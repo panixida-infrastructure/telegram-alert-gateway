@@ -21,9 +21,11 @@ public sealed class NotificationRetentionWorker(
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        using var timer = new PeriodicTimer(_cleanupInterval, timeProvider);
+
         while (!stoppingToken.IsCancellationRequested)
         {
-            var nextDelay = _cleanupInterval;
+            var nextInterval = _cleanupInterval;
 
             try
             {
@@ -51,14 +53,15 @@ public sealed class NotificationRetentionWorker(
             }
             catch (Exception exception)
             {
-                nextDelay = RetryDelay;
+                nextInterval = RetryDelay;
                 logger.LogError(exception, "Notification retention cleanup failed.");
             }
 
-            await Task.Delay(
-                delay: nextDelay,
-                timeProvider: timeProvider,
-                cancellationToken: stoppingToken);
+            timer.Period = nextInterval;
+            if (!await timer.WaitForNextTickAsync(stoppingToken))
+            {
+                break;
+            }
         }
     }
 }

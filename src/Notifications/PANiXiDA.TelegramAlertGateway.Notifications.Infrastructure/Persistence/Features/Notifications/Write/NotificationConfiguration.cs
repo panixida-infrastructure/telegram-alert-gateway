@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
 using PANiXiDA.TelegramAlertGateway.Notifications.Domain.Notifications;
@@ -76,12 +77,17 @@ internal sealed class NotificationConfiguration : AuditableEntityConfiguration<N
             {
                 value.Status,
                 value.AvailableAtUtc
-            });
+            }).HasDatabaseName(
+                "ix_notifications_delivery_status_delivery_available_at_utc");
             delivery.HasIndex(value => new
             {
                 value.Status,
                 value.SentAtUtc
-            });
+            }).HasDatabaseName(
+                "ix_notifications_delivery_status_delivery_sent_at_utc");
+
+            delivery.WithOwner()
+                .HasConstraintName("fk_notifications_notifications_id");
         });
 
         builder.Navigation(item => item.Delivery)

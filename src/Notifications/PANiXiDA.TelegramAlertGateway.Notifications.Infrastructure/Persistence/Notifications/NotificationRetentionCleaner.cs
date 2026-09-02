@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
+using PANiXiDA.TelegramAlertGateway.Notifications.Domain.Notifications;
 using PANiXiDA.TelegramAlertGateway.Notifications.Domain.Notifications.Enumerations;
 using PANiXiDA.TelegramAlertGateway.Notifications.Infrastructure.Configuration.Options.NotificationRetention;
 using PANiXiDA.TelegramAlertGateway.Notifications.Infrastructure.Persistence.Core;
@@ -36,7 +37,7 @@ public sealed class NotificationRetentionCleaner(
 
         do
         {
-            deleted = await dbContext.Notifications
+            deleted = await dbContext.Set<Notification>()
                 .Where(item =>
                     item.Delivery.Status == NotificationStatus.Sent
                     && item.Delivery.SentAtUtc < cutoffUtc)
@@ -59,7 +60,7 @@ public sealed class NotificationRetentionCleaner(
 
         do
         {
-            deleted = await dbContext.Notifications
+            deleted = await dbContext.Set<Notification>()
                 .Where(item =>
                     item.Delivery.Status == NotificationStatus.Failed
                     && item.Delivery.AvailableAtUtc < cutoffUtc)

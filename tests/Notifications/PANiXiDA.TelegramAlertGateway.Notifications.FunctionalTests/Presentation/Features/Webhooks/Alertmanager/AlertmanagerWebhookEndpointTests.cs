@@ -5,6 +5,7 @@ using System.Net.Http.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 
+using PANiXiDA.TelegramAlertGateway.Notifications.Domain.Notifications;
 using PANiXiDA.TelegramAlertGateway.Notifications.Infrastructure.Persistence.Core;
 
 namespace PANiXiDA.TelegramAlertGateway.Notifications.FunctionalTests.Presentation.Features.Webhooks.Alertmanager;
@@ -34,7 +35,7 @@ public sealed class AlertmanagerWebhookEndpointTests(FunctionalTestFixture fixtu
 
         await using var scope = Fixture.Services.CreateAsyncScope();
         var dbContext = scope.ServiceProvider.GetRequiredService<NotificationsWriteDbContext>();
-        var notificationsCount = await dbContext.Notifications.CountAsync(
+        var notificationsCount = await dbContext.Set<Notification>().CountAsync(
             TestContext.Current.CancellationToken);
 
         firstResponse.StatusCode.ShouldBe(HttpStatusCode.Accepted);

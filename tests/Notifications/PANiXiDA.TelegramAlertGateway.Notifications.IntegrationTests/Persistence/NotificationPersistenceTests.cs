@@ -23,7 +23,7 @@ public sealed class NotificationPersistenceTests(IntegrationTestFixture fixture)
         notification.MarkProcessing(now: now);
         await using var scope = Fixture.CreateScope();
         var dbContext = scope.ServiceProvider.GetRequiredService<NotificationsWriteDbContext>();
-        dbContext.Notifications.Add(notification);
+        dbContext.Set<Notification>().Add(notification);
 
         await dbContext.SaveChangesAsync(TestContext.Current.CancellationToken);
         var storedKind = await dbContext.Database
