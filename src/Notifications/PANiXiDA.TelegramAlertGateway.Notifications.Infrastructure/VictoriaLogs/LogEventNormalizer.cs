@@ -202,7 +202,7 @@ public sealed partial class LogEventNormalizer(
             StreamId: GetValue(fields, "_stream_id"));
     }
 
-    private static IReadOnlyDictionary<string, string> CreateStructuredFields(
+    private static Dictionary<string, string> CreateStructuredFields(
         IReadOnlyDictionary<string, string> sourceFields,
         IReadOnlyDictionary<string, string> parsedFields)
     {
