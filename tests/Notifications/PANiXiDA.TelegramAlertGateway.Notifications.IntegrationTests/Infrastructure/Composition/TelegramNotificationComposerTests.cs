@@ -332,7 +332,7 @@ public sealed class TelegramNotificationComposerTests(IntegrationTestFixture fix
         notification.Message.ShouldContain("Logs for this source and window");
     }
 
-    [Theory(DisplayName = "Compose log event should preserve valid JSON when fields exceed the message budget")]
+    [Theory(DisplayName = "Compose log event should preserve valid JSON when fields exceed message budget")]
     [InlineData(0, 700)]
     [InlineData(1000, 450)]
     [InlineData(1750, 250)]
