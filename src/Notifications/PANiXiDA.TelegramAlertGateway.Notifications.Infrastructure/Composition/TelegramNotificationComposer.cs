@@ -220,7 +220,7 @@ internal sealed class TelegramNotificationComposer(
         {
             message.AppendLine()
                 .AppendLine()
-                .Append(HtmlTruncate(FormatFields(logEvent.Fields), fieldsBudget));
+                .Append(Html(FormatFields(logEvent.Fields, fieldsBudget)));
         }
 
         message.AppendLine(PreformattedTextClosingTag);
@@ -346,12 +346,34 @@ internal sealed class TelegramNotificationComposer(
         return $"{seconds}-second";
     }
 
-    private static string FormatFields(IReadOnlyDictionary<string, string> fields)
+    private static string FormatFields(IReadOnlyDictionary<string, string> fields, int maxEncodedLength)
     {
         var orderedFields = fields
             .OrderBy(item => item.Key, StringComparer.OrdinalIgnoreCase)
             .ToDictionary(item => item.Key, item => item.Value.Trim());
-        return $"fields:{Environment.NewLine}{JsonSerializer.Serialize(orderedFields, LogFieldsJsonOptions)}";
+        var formattedFields = SerializeFields(orderedFields);
+        if (Html(formattedFields).Length <= maxEncodedLength)
+        {
+            return formattedFields;
+        }
+
+        var omittedNotice = $"{Environment.NewLine}… (some fields omitted)";
+        var visibleFields = new Dictionary<string, string>();
+        foreach (var field in orderedFields)
+        {
+            visibleFields.Add(field.Key, field.Value);
+            if (Html(SerializeFields(visibleFields) + omittedNotice).Length > maxEncodedLength)
+            {
+                visibleFields.Remove(field.Key);
+            }
+        }
+
+        return SerializeFields(visibleFields) + omittedNotice;
+    }
+
+    private static string SerializeFields(IReadOnlyDictionary<string, string> fields)
+    {
+        return $"fields:{Environment.NewLine}{JsonSerializer.Serialize(fields, LogFieldsJsonOptions)}";
     }
 
     private static string BuildMetricAlertBlock(AlertmanagerAlert alert)
