@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Net;
 
 using Microsoft.Extensions.DependencyInjection;
 
@@ -212,8 +213,8 @@ public sealed class TelegramNotificationComposerTests(IntegrationTestFixture fix
         notification.Topic.ShouldBe("tests");
     }
 
-    [Fact(DisplayName = "Compose log event should render generic fields when fields are available")]
-    public void ComposeLogEvent_Should_RenderGenericFields_When_FieldsAreAvailable()
+    [Fact(DisplayName = "Compose log event should render message and JSON fields in one block when fields are available")]
+    public void ComposeLogEvent_Should_RenderMessageAndJsonFieldsInOneBlock_When_FieldsAreAvailable()
     {
         using var scope = Fixture.CreateScope();
         var composer = scope.ServiceProvider.GetRequiredService<INotificationComposer>();
@@ -232,7 +233,8 @@ public sealed class TelegramNotificationComposerTests(IntegrationTestFixture fix
             Fields: new Dictionary<string, string>
             {
                 ["logger"] = "infra.usagestats.collector",
-                ["error"] = "plugin <not found>"
+                ["error"] = "plugin <not found>",
+                ["details"] = "Тест \"кавычек\"\nC:\\temp"
             },
             Fingerprint: "grafana-structured-fields",
             Occurrences: 1,
@@ -240,11 +242,22 @@ public sealed class TelegramNotificationComposerTests(IntegrationTestFixture fix
 
         var notification = composer.ComposeLogEvent(timestamp, logEvent);
 
-        notification.Message.ShouldContain("🏷 <b>Fields</b>");
-        notification.Message.ShouldContain("error: plugin &lt;not found&gt;");
-        notification.Message.ShouldContain("logger: infra.usagestats.collector");
-        notification.Message.IndexOf("error:", StringComparison.Ordinal)
-            .ShouldBeLessThan(notification.Message.IndexOf("logger:", StringComparison.Ordinal));
+        notification.Message.ShouldContain("🔴 <b>ERROR · grafana</b>");
+        notification.Message.ShouldContain("📦 observability/grafana");
+        notification.Message.ShouldContain("🕒 2026-09-02 17:08:33 UTC");
+        notification.Message.ShouldNotContain("🏷 <b>Fields</b>");
+        notification.Message.ShouldContain("plugin &lt;not found&gt;");
+        WebUtility.HtmlDecode(notification.Message).ReplaceLineEndings("\n").ShouldContain(
+            """
+            <pre>message: Failed to read data sources
+
+            fields:
+            {
+              "details": "Тест \"кавычек\"\nC:\\temp",
+              "error": "plugin <not found>",
+              "logger": "infra.usagestats.collector"
+            }</pre>
+            """.ReplaceLineEndings("\n"));
         notification.Message.ShouldContain("Logs for this source and window");
         notification.Message.ShouldContain(
             "_stream_id%3A0000007b000001c850d9950ea6196b1a4812081265faa1c7");

@@ -29,6 +29,11 @@ internal sealed class TelegramNotificationComposer(
     private const int MaxLogFieldsLength = 700;
     private const int PageContentLimit = 3400;
     private static readonly TimeSpan MetricDeliveryDeduplicationWindow = TimeSpan.FromMinutes(5);
+    private static readonly JsonSerializerOptions LogFieldsJsonOptions = new()
+    {
+        WriteIndented = true,
+        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+    };
 
     private readonly VictoriaLogsOptions _victoriaLogsOptions = victoriaLogsOptions.Value;
 
@@ -208,16 +213,17 @@ internal sealed class TelegramNotificationComposer(
 
         message.AppendLine();
         message.Append(PreformattedTextOpeningTag)
-            .Append(HtmlTruncate(logEvent.Message, messageBudget))
-            .AppendLine(PreformattedTextClosingTag);
+            .Append("message: ")
+            .Append(HtmlTruncate(logEvent.Message, messageBudget));
 
         if (fieldsBudget > 0 && logEvent.Fields.Count > 0)
         {
-            message.AppendLine("🏷 <b>Fields</b>")
-                .Append(PreformattedTextOpeningTag)
-                .Append(HtmlTruncate(FormatFields(logEvent.Fields), fieldsBudget))
-                .AppendLine(PreformattedTextClosingTag);
+            message.AppendLine()
+                .AppendLine()
+                .Append(HtmlTruncate(FormatFields(logEvent.Fields), fieldsBudget));
         }
+
+        message.AppendLine(PreformattedTextClosingTag);
 
         if (!string.IsNullOrWhiteSpace(logEvent.ExceptionType))
         {
@@ -342,15 +348,10 @@ internal sealed class TelegramNotificationComposer(
 
     private static string FormatFields(IReadOnlyDictionary<string, string> fields)
     {
-        var result = new StringBuilder();
-        foreach (var field in fields.OrderBy(item => item.Key, StringComparer.OrdinalIgnoreCase))
-        {
-            result.Append(field.Key.Trim())
-                .Append(": ")
-                .AppendLine(field.Value.Trim());
-        }
-
-        return result.ToString().TrimEnd();
+        var orderedFields = fields
+            .OrderBy(item => item.Key, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(item => item.Key, item => item.Value.Trim());
+        return $"fields:{Environment.NewLine}{JsonSerializer.Serialize(orderedFields, LogFieldsJsonOptions)}";
     }
 
     private static string BuildMetricAlertBlock(AlertmanagerAlert alert)
