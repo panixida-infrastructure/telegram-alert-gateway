@@ -1,10 +1,16 @@
 using System.Globalization;
+using System.Net;
+using System.Text.Json;
 
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 
 using PANiXiDA.TelegramAlertGateway.Notifications.Application.Notifications.Abstractions;
 using PANiXiDA.TelegramAlertGateway.Notifications.Application.Notifications.Models;
 using PANiXiDA.TelegramAlertGateway.Notifications.Domain.Notifications.ValueObjects;
+using PANiXiDA.TelegramAlertGateway.Notifications.Infrastructure.Composition;
+using PANiXiDA.TelegramAlertGateway.Notifications.Infrastructure.Configuration.Options.VictoriaLogs;
+using PANiXiDA.TelegramAlertGateway.Notifications.Infrastructure.Routing;
 
 namespace PANiXiDA.TelegramAlertGateway.Notifications.IntegrationTests.Infrastructure.Composition;
 
@@ -212,8 +218,8 @@ public sealed class TelegramNotificationComposerTests(IntegrationTestFixture fix
         notification.Topic.ShouldBe("tests");
     }
 
-    [Fact(DisplayName = "Compose log event should render generic fields when fields are available")]
-    public void ComposeLogEvent_Should_RenderGenericFields_When_FieldsAreAvailable()
+    [Fact(DisplayName = "Compose log event should render message and JSON fields in one block when fields are available")]
+    public void ComposeLogEvent_Should_RenderMessageAndJsonFieldsInOneBlock_When_FieldsAreAvailable()
     {
         using var scope = Fixture.CreateScope();
         var composer = scope.ServiceProvider.GetRequiredService<INotificationComposer>();
@@ -232,7 +238,8 @@ public sealed class TelegramNotificationComposerTests(IntegrationTestFixture fix
             Fields: new Dictionary<string, string>
             {
                 ["logger"] = "infra.usagestats.collector",
-                ["error"] = "plugin <not found>"
+                ["error"] = "plugin <not found>",
+                ["details"] = "Тест \"кавычек\"\nC:\\temp"
             },
             Fingerprint: "grafana-structured-fields",
             Occurrences: 1,
@@ -240,11 +247,22 @@ public sealed class TelegramNotificationComposerTests(IntegrationTestFixture fix
 
         var notification = composer.ComposeLogEvent(timestamp, logEvent);
 
-        notification.Message.ShouldContain("🏷 <b>Fields</b>");
-        notification.Message.ShouldContain("error: plugin &lt;not found&gt;");
-        notification.Message.ShouldContain("logger: infra.usagestats.collector");
-        notification.Message.IndexOf("error:", StringComparison.Ordinal)
-            .ShouldBeLessThan(notification.Message.IndexOf("logger:", StringComparison.Ordinal));
+        notification.Message.ShouldContain("🔴 <b>ERROR · grafana</b>");
+        notification.Message.ShouldContain("📦 observability/grafana");
+        notification.Message.ShouldContain("🕒 2026-09-02 17:08:33 UTC");
+        notification.Message.ShouldNotContain("🏷 <b>Fields</b>");
+        notification.Message.ShouldContain("plugin &lt;not found&gt;");
+        WebUtility.HtmlDecode(notification.Message).ReplaceLineEndings("\n").ShouldContain(
+            """
+            <pre>message: Failed to read data sources
+
+            fields:
+            {
+              "details": "Тест \"кавычек\"\nC:\\temp",
+              "error": "plugin <not found>",
+              "logger": "infra.usagestats.collector"
+            }</pre>
+            """.ReplaceLineEndings("\n"));
         notification.Message.ShouldContain("Logs for this source and window");
         notification.Message.ShouldContain(
             "_stream_id%3A0000007b000001c850d9950ea6196b1a4812081265faa1c7");
@@ -312,6 +330,65 @@ public sealed class TelegramNotificationComposerTests(IntegrationTestFixture fix
 
         notification.Message.Length.ShouldBeLessThanOrEqualTo(NotificationMessage.MaxLength);
         notification.Message.ShouldContain("Logs for this source and window");
+    }
+
+    [Theory(DisplayName = "Compose log event should preserve valid JSON when fields exceed message budget")]
+    [InlineData(0, 700)]
+    [InlineData(1000, 450)]
+    [InlineData(1750, 250)]
+    public void ComposeLogEvent_Should_PreserveValidJson_When_FieldsExceedMessageBudget(
+        int logsUrlPadding,
+        int expectedFieldsBudget)
+    {
+        using var scope = Fixture.CreateScope();
+        var composer = new TelegramNotificationComposer(
+            scope.ServiceProvider.GetRequiredService<ITopicRouter>(),
+            Options.Create(new VictoriaLogsOptions
+            {
+                GrafanaLogsUrl = "https://grafana.example/" + new string('a', logsUrlPadding)
+            }));
+        var fields = Enumerable.Range(0, 30).ToDictionary(
+            index => $"Field\"{index:D2}",
+            index => $"Значение {index}: <&>\"'\\\n🙂");
+        fields.Add("A", new string('x', 1000));
+        fields.Add(new string('z', 1000), "oversized key");
+        var windowStart = new DateTimeOffset(2026, 9, 27, 17, 0, 0, TimeSpan.Zero);
+        var logEvent = new LogEvent(
+            Timestamp: windowStart,
+            Service: new string('s', 180),
+            Namespace: new string('n', 124),
+            Container: new string('c', 125),
+            Owner: "tests",
+            Severity: "error",
+            Message: new string('m', 1000),
+            ExceptionType: new string('e', 180),
+            StackTrace: new string('s', 1000),
+            TraceId: new string('t', 180),
+            Fields: fields,
+            Fingerprint: "json-fields-truncation",
+            Occurrences: 3);
+
+        var notification = composer.ComposeLogEvent(windowStart, logEvent);
+
+        notification.Message.Length.ShouldBeLessThanOrEqualTo(NotificationMessage.MaxLength);
+        var fieldsStart = notification.Message.IndexOf("fields:", StringComparison.Ordinal);
+        fieldsStart.ShouldBeGreaterThanOrEqualTo(0);
+        var fieldsEnd = notification.Message.IndexOf("</pre>", fieldsStart, StringComparison.Ordinal);
+        var encodedFields = notification.Message[fieldsStart..fieldsEnd];
+        encodedFields.Length.ShouldBeLessThanOrEqualTo(expectedFieldsBudget);
+        var decodedFields = WebUtility.HtmlDecode(encodedFields).ReplaceLineEndings("\n");
+        const string omittedNotice = "\n… (some fields omitted)";
+        decodedFields.ShouldEndWith(omittedNotice);
+        var json = decodedFields["fields:\n".Length..^omittedNotice.Length];
+        using var document = JsonDocument.Parse(json);
+        var properties = document.RootElement.EnumerateObject().ToArray();
+        properties.Length.ShouldBeGreaterThan(0);
+        properties.Length.ShouldBeLessThan(fields.Count);
+        document.RootElement.TryGetProperty("A", out _).ShouldBeFalse();
+        foreach (var property in properties)
+        {
+            property.Value.GetString().ShouldBe(fields[property.Name]);
+        }
     }
 
     [Fact(DisplayName = "Compose log event should create new key for next window when same error repeats")]

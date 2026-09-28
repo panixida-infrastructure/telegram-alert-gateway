@@ -29,6 +29,11 @@ internal sealed class TelegramNotificationComposer(
     private const int MaxLogFieldsLength = 700;
     private const int PageContentLimit = 3400;
     private static readonly TimeSpan MetricDeliveryDeduplicationWindow = TimeSpan.FromMinutes(5);
+    private static readonly JsonSerializerOptions LogFieldsJsonOptions = new()
+    {
+        WriteIndented = true,
+        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+    };
 
     private readonly VictoriaLogsOptions _victoriaLogsOptions = victoriaLogsOptions.Value;
 
@@ -208,16 +213,17 @@ internal sealed class TelegramNotificationComposer(
 
         message.AppendLine();
         message.Append(PreformattedTextOpeningTag)
-            .Append(HtmlTruncate(logEvent.Message, messageBudget))
-            .AppendLine(PreformattedTextClosingTag);
+            .Append("message: ")
+            .Append(HtmlTruncate(logEvent.Message, messageBudget));
 
         if (fieldsBudget > 0 && logEvent.Fields.Count > 0)
         {
-            message.AppendLine("🏷 <b>Fields</b>")
-                .Append(PreformattedTextOpeningTag)
-                .Append(HtmlTruncate(FormatFields(logEvent.Fields), fieldsBudget))
-                .AppendLine(PreformattedTextClosingTag);
+            message.AppendLine()
+                .AppendLine()
+                .Append(Html(FormatFields(logEvent.Fields, fieldsBudget)));
         }
+
+        message.AppendLine(PreformattedTextClosingTag);
 
         if (!string.IsNullOrWhiteSpace(logEvent.ExceptionType))
         {
@@ -340,17 +346,34 @@ internal sealed class TelegramNotificationComposer(
         return $"{seconds}-second";
     }
 
-    private static string FormatFields(IReadOnlyDictionary<string, string> fields)
+    private static string FormatFields(IReadOnlyDictionary<string, string> fields, int maxEncodedLength)
     {
-        var result = new StringBuilder();
-        foreach (var field in fields.OrderBy(item => item.Key, StringComparer.OrdinalIgnoreCase))
+        var orderedFields = fields
+            .OrderBy(item => item.Key, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(item => item.Key, item => item.Value.Trim());
+        var formattedFields = SerializeFields(orderedFields);
+        if (Html(formattedFields).Length <= maxEncodedLength)
         {
-            result.Append(field.Key.Trim())
-                .Append(": ")
-                .AppendLine(field.Value.Trim());
+            return formattedFields;
         }
 
-        return result.ToString().TrimEnd();
+        var omittedNotice = $"{Environment.NewLine}… (some fields omitted)";
+        var visibleFields = new Dictionary<string, string>();
+        foreach (var field in orderedFields)
+        {
+            visibleFields.Add(field.Key, field.Value);
+            if (Html(SerializeFields(visibleFields) + omittedNotice).Length > maxEncodedLength)
+            {
+                visibleFields.Remove(field.Key);
+            }
+        }
+
+        return SerializeFields(visibleFields) + omittedNotice;
+    }
+
+    private static string SerializeFields(IReadOnlyDictionary<string, string> fields)
+    {
+        return $"fields:{Environment.NewLine}{JsonSerializer.Serialize(fields, LogFieldsJsonOptions)}";
     }
 
     private static string BuildMetricAlertBlock(AlertmanagerAlert alert)
