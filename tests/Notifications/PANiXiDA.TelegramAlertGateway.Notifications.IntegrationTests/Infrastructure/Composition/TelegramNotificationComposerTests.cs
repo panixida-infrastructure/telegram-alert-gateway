@@ -11,6 +11,7 @@ using PANiXiDA.TelegramAlertGateway.Notifications.Domain.Notifications.ValueObje
 using PANiXiDA.TelegramAlertGateway.Notifications.Infrastructure.Composition;
 using PANiXiDA.TelegramAlertGateway.Notifications.Infrastructure.Configuration.Options.VictoriaLogs;
 using PANiXiDA.TelegramAlertGateway.Notifications.Infrastructure.Routing;
+using PANiXiDA.TelegramAlertGateway.Notifications.Infrastructure.VictoriaLogs;
 
 namespace PANiXiDA.TelegramAlertGateway.Notifications.IntegrationTests.Infrastructure.Composition;
 
@@ -218,8 +219,8 @@ public sealed class TelegramNotificationComposerTests(IntegrationTestFixture fix
         notification.Topic.ShouldBe("tests");
     }
 
-    [Fact(DisplayName = "Compose log event should render message and JSON fields in one block when fields are available")]
-    public void ComposeLogEvent_Should_RenderMessageAndJsonFieldsInOneBlock_When_FieldsAreAvailable()
+    [Fact(DisplayName = "Compose log event should render message exceptions and fields in one block when error is structured")]
+    public void ComposeLogEvent_Should_RenderMessageExceptionsAndFieldsInOneBlock_When_ErrorIsStructured()
     {
         using var scope = Fixture.CreateScope();
         var composer = scope.ServiceProvider.GetRequiredService<INotificationComposer>();
@@ -256,10 +257,16 @@ public sealed class TelegramNotificationComposerTests(IntegrationTestFixture fix
             """
             <pre>message: Failed to read data sources
 
+            exceptions:
+            [
+              {
+                "Message": "plugin <not found>"
+              }
+            ]
+
             fields:
             {
               "details": "Тест \"кавычек\"\nC:\\temp",
-              "error": "plugin <not found>",
               "logger": "infra.usagestats.collector"
             }</pre>
             """.ReplaceLineEndings("\n"));
@@ -269,6 +276,102 @@ public sealed class TelegramNotificationComposerTests(IntegrationTestFixture fix
         notification.Message.ShouldContain(
             timestamp.ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture));
         notification.Message.Length.ShouldBeLessThanOrEqualTo(NotificationMessage.MaxLength);
+    }
+
+    [Theory(DisplayName = "Compose log event should render legacy exception names when exception details are available")]
+    [InlineData("exception.message")]
+    [InlineData("error")]
+    [InlineData("err")]
+    public void ComposeLogEvent_Should_RenderLegacyExceptionNames_When_ExceptionDetailsAreAvailable(string messageField)
+    {
+        using var scope = Fixture.CreateScope();
+        var composer = scope.ServiceProvider.GetRequiredService<INotificationComposer>();
+        var normalizer = scope.ServiceProvider.GetRequiredService<LogEventNormalizer>();
+        const string exceptionMessage = "Не найден контроллер <test> \"details\" 🙂";
+        const string stackTrace = "at Controller.Load()\n  at C:\\src\\Program.cs:42";
+        var logEvent = normalizer.Normalize(
+        [
+            new Dictionary<string, string>
+            {
+                ["_msg"] = "Application_Error",
+                ["severity_text"] = "Error",
+                ["service.name"] = "legacy-crm",
+                ["exception.type"] = "System.Web.HttpException",
+                [messageField] = exceptionMessage,
+                ["exception.stacktrace"] = stackTrace,
+                ["EnvironmentName"] = "Production"
+            }
+        ]).ShouldHaveSingleItem();
+
+        var notification = composer.ComposeLogEvent(logEvent.Timestamp, logEvent);
+
+        var decoded = WebUtility.HtmlDecode(notification.Message).ReplaceLineEndings("\n");
+        var exceptionsStart = decoded.IndexOf("exceptions:\n", StringComparison.Ordinal);
+        var fieldsStart = decoded.IndexOf("\n\nfields:", StringComparison.Ordinal);
+        exceptionsStart.ShouldBeGreaterThan(decoded.IndexOf("message:", StringComparison.Ordinal));
+        fieldsStart.ShouldBeGreaterThan(exceptionsStart);
+        using var document = JsonDocument.Parse(decoded[(exceptionsStart + "exceptions:\n".Length)..fieldsStart]);
+        var exception = document.RootElement.EnumerateArray().ShouldHaveSingleItem();
+        exception.GetProperty("ClassName").GetString().ShouldBe("System.Web.HttpException");
+        exception.GetProperty("Message").GetString().ShouldBe(exceptionMessage);
+        exception.GetProperty("StackTraceString").GetString().ShouldBe(stackTrace);
+        exception.TryGetProperty("HResult", out _).ShouldBeFalse();
+        decoded[fieldsStart..].ShouldNotContain(messageField);
+        decoded.Split("<pre>").Length.ShouldBe(2);
+        decoded.Split("</pre>").Length.ShouldBe(2);
+        notification.Message.ShouldNotContain("⚠️");
+        notification.Message.ShouldContain("&lt;test&gt;");
+    }
+
+    [Fact(DisplayName = "Compose log event should preserve distinct error fields when exception message is provided")]
+    public void ComposeLogEvent_Should_PreserveDistinctErrorFields_When_ExceptionMessageIsProvided()
+    {
+        using var scope = Fixture.CreateScope();
+        var composer = scope.ServiceProvider.GetRequiredService<INotificationComposer>();
+        var normalizer = scope.ServiceProvider.GetRequiredService<LogEventNormalizer>();
+        var logEvent = normalizer.Normalize(
+        [
+            new Dictionary<string, string>
+            {
+                ["_msg"] = "Request failed",
+                ["severity_text"] = "Error",
+                ["exception.message"] = "Primary failure",
+                ["error"] = "Primary failure",
+                ["err"] = "Additional context"
+            }
+        ]).ShouldHaveSingleItem();
+
+        var notification = composer.ComposeLogEvent(logEvent.Timestamp, logEvent);
+
+        var decoded = WebUtility.HtmlDecode(notification.Message).ReplaceLineEndings("\n");
+        decoded.ShouldContain("\"Message\": \"Primary failure\"");
+        decoded.ShouldContain("\"err\": \"Additional context\"");
+        decoded.ShouldNotContain("\"error\":");
+        decoded.ShouldNotContain("\"exception.message\":");
+    }
+
+    [Fact(DisplayName = "Compose log event should omit exceptions when no exception details are available")]
+    public void ComposeLogEvent_Should_OmitExceptions_When_NoExceptionDetailsAreAvailable()
+    {
+        using var scope = Fixture.CreateScope();
+        var composer = scope.ServiceProvider.GetRequiredService<INotificationComposer>();
+        var normalizer = scope.ServiceProvider.GetRequiredService<LogEventNormalizer>();
+        var logEvent = normalizer.Normalize(
+        [
+            new Dictionary<string, string>
+            {
+                ["_msg"] = "Request failed",
+                ["severity_text"] = "Error",
+                ["exception.message"] = " ",
+                ["EnvironmentName"] = "Production"
+            }
+        ]).ShouldHaveSingleItem();
+
+        var notification = composer.ComposeLogEvent(logEvent.Timestamp, logEvent);
+
+        notification.Message.ShouldContain("message: Request failed");
+        notification.Message.ShouldContain("fields:");
+        notification.Message.ShouldNotContain("exceptions:");
     }
 
     [Fact(DisplayName = "Compose log event should render configured log window when event is composed")]
@@ -319,6 +422,7 @@ public sealed class TelegramNotificationComposerTests(IntegrationTestFixture fix
             TraceId: encodedContent,
             Fields: new Dictionary<string, string>
             {
+                ["exception.message"] = encodedContent,
                 ["UserId"] = encodedContent,
                 ["UserName"] = encodedContent
             },
@@ -330,6 +434,65 @@ public sealed class TelegramNotificationComposerTests(IntegrationTestFixture fix
 
         notification.Message.Length.ShouldBeLessThanOrEqualTo(NotificationMessage.MaxLength);
         notification.Message.ShouldContain("Logs for this source and window");
+    }
+
+    [Theory(DisplayName = "Compose log event should preserve valid exception JSON when content exceeds message budget")]
+    [InlineData(0)]
+    [InlineData(1000)]
+    [InlineData(1750)]
+    [InlineData(5000)]
+    public void ComposeLogEvent_Should_PreserveValidExceptionJson_When_ContentExceedsMessageBudget(int logsUrlPadding)
+    {
+        using var scope = Fixture.CreateScope();
+        var composer = new TelegramNotificationComposer(
+            scope.ServiceProvider.GetRequiredService<ITopicRouter>(),
+            Options.Create(new VictoriaLogsOptions
+            {
+                GrafanaLogsUrl = "https://grafana.example/" + new string('a', logsUrlPadding)
+            }));
+        var normalizer = scope.ServiceProvider.GetRequiredService<LogEventNormalizer>();
+        var content = string.Concat(Enumerable.Repeat("Ошибка \"<&>\" \\ \n🙂", 200));
+        var logEvent = normalizer.Normalize(
+        [
+            new Dictionary<string, string>
+            {
+                ["_msg"] = new string('m', 2000),
+                ["severity_text"] = "Error",
+                ["exception.type"] = content,
+                ["exception.message"] = content,
+                ["exception.stacktrace"] = content,
+                ["EnvironmentName"] = "Production"
+            }
+        ]).ShouldHaveSingleItem();
+
+        var notification = composer.ComposeLogEvent(logEvent.Timestamp, logEvent);
+
+        notification.Message.Length.ShouldBeLessThanOrEqualTo(NotificationMessage.MaxLength);
+        var decoded = WebUtility.HtmlDecode(notification.Message).ReplaceLineEndings("\n");
+        var start = decoded.IndexOf("exceptions:\n", StringComparison.Ordinal) + "exceptions:\n".Length;
+        var end = decoded.IndexOf("\n\nfields:", start, StringComparison.Ordinal);
+        if (end < 0)
+        {
+            end = decoded.IndexOf("</pre>", start, StringComparison.Ordinal);
+        }
+
+        using var document = JsonDocument.Parse(decoded[start..end]);
+        var exception = document.RootElement.EnumerateArray().ShouldHaveSingleItem();
+        foreach (var property in exception.EnumerateObject())
+        {
+            var value = property.Value.GetString().ShouldNotBeNull();
+            value.ShouldNotContain("\uFFFD");
+            if (value == "… (stack trace omitted)")
+            {
+                continue;
+            }
+
+            value.ShouldEndWith("…");
+            content.ShouldStartWith(value[..^1]);
+        }
+
+        decoded.Split("<pre>").Length.ShouldBe(2);
+        decoded.Split("</pre>").Length.ShouldBe(2);
     }
 
     [Theory(DisplayName = "Compose log event should preserve valid JSON when fields exceed message budget")]

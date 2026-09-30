@@ -28,8 +28,9 @@ internal sealed class TelegramNotificationComposer(
     private const int MaxAlertBlockLength = 2600;
     private const int MaxLogFieldsLength = 700;
     private const int PageContentLimit = 3400;
+    private static readonly string[] ExceptionMessageFieldNames = ["exception.message", "error", "err"];
     private static readonly TimeSpan MetricDeliveryDeduplicationWindow = TimeSpan.FromMinutes(5);
-    private static readonly JsonSerializerOptions LogFieldsJsonOptions = new()
+    private static readonly JsonSerializerOptions LogDetailsJsonOptions = new()
     {
         WriteIndented = true,
         Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
@@ -127,6 +128,7 @@ internal sealed class TelegramNotificationComposer(
             logsUrl: logsUrl,
             messageBudget: GetPreferredMessageBudget(logEvent),
             fieldsBudget: MaxLogFieldsLength,
+            exceptionMessageBudget: 600,
             stackTraceBudget: 750);
         if (message.Length > NotificationMessage.MaxLength)
         {
@@ -136,6 +138,7 @@ internal sealed class TelegramNotificationComposer(
                 logsUrl: logsUrl,
                 messageBudget: 700,
                 fieldsBudget: 450,
+                exceptionMessageBudget: 350,
                 stackTraceBudget: 250);
         }
 
@@ -147,6 +150,7 @@ internal sealed class TelegramNotificationComposer(
                 logsUrl: logsUrl,
                 messageBudget: 500,
                 fieldsBudget: 250,
+                exceptionMessageBudget: 180,
                 stackTraceBudget: 0);
         }
 
@@ -158,6 +162,7 @@ internal sealed class TelegramNotificationComposer(
                 logsUrl: null,
                 messageBudget: 350,
                 fieldsBudget: 0,
+                exceptionMessageBudget: 180,
                 stackTraceBudget: 0);
         }
 
@@ -176,6 +181,7 @@ internal sealed class TelegramNotificationComposer(
         string? logsUrl,
         int messageBudget,
         int fieldsBudget,
+        int exceptionMessageBudget,
         int stackTraceBudget)
     {
         var location = string.Join(
@@ -216,28 +222,31 @@ internal sealed class TelegramNotificationComposer(
             .Append("message: ")
             .Append(HtmlTruncate(logEvent.Message, messageBudget));
 
-        if (fieldsBudget > 0 && logEvent.Fields.Count > 0)
+        var exceptionMessage = GetValue(logEvent.Fields, ExceptionMessageFieldNames);
+        var exceptions = FormatExceptions(
+            logEvent: logEvent,
+            exceptionMessage: exceptionMessage,
+            messageBudget: exceptionMessageBudget,
+            stackTraceBudget: stackTraceBudget);
+        if (exceptions is not null)
         {
             message.AppendLine()
                 .AppendLine()
-                .Append(Html(FormatFields(logEvent.Fields, fieldsBudget)));
+                .Append(Html(exceptions));
+        }
+
+        var fields = logEvent.Fields
+            .Where(field => !ExceptionMessageFieldNames.Contains(field.Key, StringComparer.OrdinalIgnoreCase)
+                            || !string.Equals(field.Value, exceptionMessage, StringComparison.Ordinal))
+            .ToDictionary(field => field.Key, field => field.Value);
+        if (fieldsBudget > 0 && fields.Count > 0)
+        {
+            message.AppendLine()
+                .AppendLine()
+                .Append(Html(FormatFields(fields, fieldsBudget)));
         }
 
         message.AppendLine(PreformattedTextClosingTag);
-
-        if (!string.IsNullOrWhiteSpace(logEvent.ExceptionType))
-        {
-            message.Append("⚠️ <b>")
-                .Append(HtmlTruncate(logEvent.ExceptionType, 180))
-                .AppendLine("</b>");
-        }
-
-        if (stackTraceBudget > 0 && !string.IsNullOrWhiteSpace(logEvent.StackTrace))
-        {
-            message.Append(PreformattedTextOpeningTag)
-                .Append(HtmlTruncate(logEvent.StackTrace, stackTraceBudget))
-                .AppendLine(PreformattedTextClosingTag);
-        }
 
         if (!string.IsNullOrWhiteSpace(logEvent.TraceId))
         {
@@ -259,8 +268,10 @@ internal sealed class TelegramNotificationComposer(
     private static int GetPreferredMessageBudget(LogEvent logEvent)
     {
         var hasFields = logEvent.Fields.Count > 0;
-        var hasStackTrace = !string.IsNullOrWhiteSpace(logEvent.StackTrace);
-        return (hasFields, hasStackTrace) switch
+        var hasException = !string.IsNullOrWhiteSpace(logEvent.ExceptionType)
+                           || !string.IsNullOrWhiteSpace(logEvent.StackTrace)
+                           || GetValue(logEvent.Fields, ExceptionMessageFieldNames) is not null;
+        return (hasFields, hasException) switch
         {
             (true, true) => 900,
             (true, false) => 1400,
@@ -373,7 +384,71 @@ internal sealed class TelegramNotificationComposer(
 
     private static string SerializeFields(IReadOnlyDictionary<string, string> fields)
     {
-        return $"fields:{Environment.NewLine}{JsonSerializer.Serialize(fields, LogFieldsJsonOptions)}";
+        return $"fields:{Environment.NewLine}{JsonSerializer.Serialize(fields, LogDetailsJsonOptions)}";
+    }
+
+    private static string? FormatExceptions(
+        LogEvent logEvent,
+        string? exceptionMessage,
+        int messageBudget,
+        int stackTraceBudget)
+    {
+        var exception = new Dictionary<string, string>();
+        if (!string.IsNullOrWhiteSpace(logEvent.ExceptionType))
+        {
+            exception["ClassName"] = TruncateJsonValue(logEvent.ExceptionType, 180);
+        }
+
+        if (!string.IsNullOrWhiteSpace(exceptionMessage))
+        {
+            exception["Message"] = TruncateJsonValue(exceptionMessage, messageBudget);
+        }
+
+        if (!string.IsNullOrWhiteSpace(logEvent.StackTrace))
+        {
+            exception["StackTraceString"] = stackTraceBudget > 0
+                ? TruncateJsonValue(logEvent.StackTrace, stackTraceBudget)
+                : "… (stack trace omitted)";
+        }
+
+        return exception.Count == 0
+            ? null
+            : $"exceptions:{Environment.NewLine}{JsonSerializer.Serialize(new[] { exception }, LogDetailsJsonOptions)}";
+    }
+
+    private static string TruncateJsonValue(string value, int maxEncodedLength)
+    {
+        if (Html(JsonSerializer.Serialize(value, LogDetailsJsonOptions)).Length <= maxEncodedLength)
+        {
+            return value;
+        }
+
+        var minimum = 0;
+        var maximum = value.Length;
+        while (minimum < maximum)
+        {
+            var candidate = minimum + ((maximum - minimum + 1) / 2);
+            var prefixLength = GetUnicodePrefixLength(value, candidate);
+            var shortened = value[..prefixLength] + "…";
+            if (Html(JsonSerializer.Serialize(shortened, LogDetailsJsonOptions)).Length <= maxEncodedLength)
+            {
+                minimum = candidate;
+            }
+            else
+            {
+                maximum = candidate - 1;
+            }
+        }
+
+        return value[..GetUnicodePrefixLength(value, minimum)] + "…";
+    }
+
+    private static int GetUnicodePrefixLength(string value, int length)
+    {
+        return length > 0 && length < value.Length
+                          && char.IsHighSurrogate(value[length - 1]) && char.IsLowSurrogate(value[length])
+            ? length - 1
+            : length;
     }
 
     private static string BuildMetricAlertBlock(AlertmanagerAlert alert)
