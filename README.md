@@ -25,6 +25,17 @@ and sends messages through `Telegram.Bot`.
   `exception.source` fields are rendered as optional `HResult` and `Source` in
   `exceptions`, without duplication in `fields`. Invalid HRESULT values stay in
   `fields`; generic `source` and `HResult` fields are not reclassified.
+- Each rendered exception has a numeric `Depth`: zero for the outer exception,
+  increasing for each nested cause. The gateway parses the standard invariant
+  .NET `Exception.ToString()` representation in `exception.stacktrace`, including
+  `AggregateException` branches (siblings keep the same depth). Each entry has its
+  own type, message and stack. Outer `HResult` and `Source` are not copied to inner
+  exceptions. Unsupported or incomplete formats retain the original stack text.
+- Nested exceptions remain in one Telegram message and one copyable block. Their
+  message and stack budgets are shared. At most five entries are displayed; longer
+  trees keep the first four and the last entry, with an explicit omitted count.
+  Parsing is bounded to 128K UTF-16 code units, 64 entries and depth 32; inputs beyond these limits
+  use the original-text fallback. No nested causes are inferred from plain errors.
 - An idempotency key and a PostgreSQL unique constraint suppress webhook retries and
   repeated processing of the same log window.
 - Telegram traffic prefers the WireGuard-backed `telegram-vpn` HTTP proxy and falls
