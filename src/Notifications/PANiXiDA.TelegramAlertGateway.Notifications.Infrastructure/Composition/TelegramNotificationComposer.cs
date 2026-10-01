@@ -27,6 +27,7 @@ internal sealed class TelegramNotificationComposer(
     private const string VictoriaLogsDataSourceUid = "victorialogs";
     private const int MaxAlertBlockLength = 2600;
     private const int MaxLogFieldsLength = 700;
+    private const int MaxDisplayedExceptions = 5;
     private const int PageContentLimit = 3400;
     private const string ExceptionHResultFieldName = "exception.hresult";
     private const string ExceptionSourceFieldName = "exception.source";
@@ -407,21 +408,59 @@ internal sealed class TelegramNotificationComposer(
         int messageBudget,
         int stackTraceBudget)
     {
-        var exception = new Dictionary<string, object>();
-        if (!string.IsNullOrWhiteSpace(logEvent.ExceptionType))
+        var details = DotNetExceptionParser.Parse(logEvent.StackTrace)
+                      ?? [new LogExceptionDetails(
+                          Depth: 0,
+                          ClassName: logEvent.ExceptionType,
+                          Message: exceptionMessage,
+                          StackTrace: logEvent.StackTrace)];
+        var visible = details.Count > MaxDisplayedExceptions
+            ? details.Take(MaxDisplayedExceptions - 1).Append(details[^1]).ToArray()
+            : details.ToArray();
+        var exceptions = visible.Select((detail, index) => FormatException(
+                detail: index == 0 ? detail with
+                {
+                    ClassName = logEvent.ExceptionType ?? detail.ClassName
+                } : detail,
+                hResult: index == 0 ? hResult : null,
+                source: index == 0 ? source : null,
+                messageBudget: messageBudget / visible.Length,
+                stackTraceBudget: stackTraceBudget / visible.Length))
+            .Where(exception => exception.Count > 1)
+            .ToArray();
+        if (exceptions.Length == 0)
         {
-            exception["ClassName"] = TruncateJsonValue(logEvent.ExceptionType, 180);
+            return null;
         }
 
-        if (!string.IsNullOrWhiteSpace(exceptionMessage))
+        var formatted = $"exceptions:{Environment.NewLine}{JsonSerializer.Serialize(exceptions, LogDetailsJsonOptions)}";
+        return details.Count > visible.Length
+            ? $"{formatted}{Environment.NewLine}… ({details.Count - visible.Length} exceptions omitted)"
+            : formatted;
+    }
+
+    private static Dictionary<string, object> FormatException(
+        LogExceptionDetails detail,
+        int? hResult,
+        string? source,
+        int messageBudget,
+        int stackTraceBudget)
+    {
+        var exception = new Dictionary<string, object> { ["Depth"] = detail.Depth };
+        if (!string.IsNullOrWhiteSpace(detail.ClassName))
         {
-            exception["Message"] = TruncateJsonValue(exceptionMessage, messageBudget);
+            exception["ClassName"] = TruncateJsonValue(detail.ClassName, 180);
         }
 
-        if (!string.IsNullOrWhiteSpace(logEvent.StackTrace))
+        if (!string.IsNullOrWhiteSpace(detail.Message))
+        {
+            exception["Message"] = TruncateJsonValue(detail.Message, messageBudget);
+        }
+
+        if (!string.IsNullOrWhiteSpace(detail.StackTrace))
         {
             exception["StackTraceString"] = stackTraceBudget > 0
-                ? TruncateJsonValue(logEvent.StackTrace, stackTraceBudget)
+                ? TruncateJsonValue(detail.StackTrace, stackTraceBudget)
                 : "… (stack trace omitted)";
         }
 
@@ -435,9 +474,7 @@ internal sealed class TelegramNotificationComposer(
             exception["Source"] = TruncateJsonValue(source, 180);
         }
 
-        return exception.Count == 0
-            ? null
-            : $"exceptions:{Environment.NewLine}{JsonSerializer.Serialize(new[] { exception }, LogDetailsJsonOptions)}";
+        return exception;
     }
 
     private static int? GetExceptionHResult(IReadOnlyDictionary<string, string> fields)

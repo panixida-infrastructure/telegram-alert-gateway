@@ -260,6 +260,7 @@ public sealed class TelegramNotificationComposerTests(IntegrationTestFixture fix
             exceptions:
             [
               {
+                "Depth": 0,
                 "Message": "plugin <not found>"
               }
             ]
@@ -315,6 +316,7 @@ public sealed class TelegramNotificationComposerTests(IntegrationTestFixture fix
         exception.GetProperty("ClassName").GetString().ShouldBe("System.Web.HttpException");
         exception.GetProperty("Message").GetString().ShouldBe(exceptionMessage);
         exception.GetProperty("StackTraceString").GetString().ShouldBe(stackTrace);
+        exception.GetProperty("Depth").GetInt32().ShouldBe(0);
         exception.TryGetProperty("HResult", out _).ShouldBeFalse();
         exception.TryGetProperty("Source", out _).ShouldBeFalse();
         decoded[fieldsStart..].ShouldNotContain(messageField);
@@ -322,6 +324,171 @@ public sealed class TelegramNotificationComposerTests(IntegrationTestFixture fix
         decoded.Split("</pre>").Length.ShouldBe(2);
         notification.Message.ShouldNotContain("⚠️");
         notification.Message.ShouldContain("&lt;test&gt;");
+    }
+
+    [Fact(DisplayName = "Compose log event should render nested exceptions in one block when stack contains inner exceptions")]
+    public void ComposeLogEvent_Should_RenderNestedExceptionsInOneBlock_When_StackContainsInnerExceptions()
+    {
+        using var scope = Fixture.CreateScope();
+        var composer = scope.ServiceProvider.GetRequiredService<INotificationComposer>();
+        var normalizer = scope.ServiceProvider.GetRequiredService<LogEventNormalizer>();
+        const string stack = """
+            System.InvalidOperationException: Save failed
+             ---> System.IO.IOException: Connection failed
+             ---> System.TimeoutException: Timeout <database> "details" 🙂
+               at Database.Read()
+               --- End of inner exception stack trace ---
+               at Connection.Open()
+               --- End of inner exception stack trace ---
+               at Orders.Save()
+            """;
+        var logEvent = normalizer.Normalize(
+        [
+            new Dictionary<string, string>
+            {
+                ["_msg"] = "Could not process order",
+                ["severity_text"] = "Error",
+                ["exception.type"] = "InvalidOperationException",
+                ["exception.message"] = "Save failed",
+                ["exception.stacktrace"] = stack,
+                ["exception.hresult"] = "-2146233079",
+                ["exception.source"] = "Orders",
+                ["OrderId"] = "123"
+            }
+        ]).ShouldHaveSingleItem();
+
+        var notification = composer.ComposeLogEvent(logEvent.Timestamp, logEvent);
+
+        using var document = ReadExceptions(notification.Message);
+        var exceptions = document.RootElement.EnumerateArray().ToArray();
+        exceptions.Select(item => item.GetProperty("Depth").GetInt32()).ShouldBe([0, 1, 2]);
+        exceptions.Select(item => item.GetProperty("ClassName").GetString()).ShouldBe(
+            ["InvalidOperationException", "System.IO.IOException", "System.TimeoutException"]);
+        exceptions.Select(item => item.GetProperty("Message").GetString()).ShouldBe(
+            ["Save failed", "Connection failed", "Timeout <database> \"details\" 🙂"]);
+        exceptions.Select(item => item.GetProperty("StackTraceString").GetString()).ShouldBe(
+            ["   at Orders.Save()", "   at Connection.Open()", "   at Database.Read()"]);
+        exceptions[0].GetProperty("HResult").GetInt32().ShouldBe(-2146233079);
+        exceptions[0].GetProperty("Source").GetString().ShouldBe("Orders");
+        exceptions[1].TryGetProperty("HResult", out _).ShouldBeFalse();
+        exceptions[2].TryGetProperty("Source", out _).ShouldBeFalse();
+        notification.Message.ShouldContain("&lt;database&gt;");
+        notification.Message.ShouldContain("message: Could not process order");
+        notification.Message.ShouldContain("OrderId");
+        notification.Message.Split("<pre>").Length.ShouldBe(2);
+        notification.Message.Split("</pre>").Length.ShouldBe(2);
+    }
+
+    [Fact(DisplayName = "Compose log event should preserve extra exception context when stack header contains additional details")]
+    public void ComposeLogEvent_Should_PreserveExtraExceptionContext_When_StackHeaderContainsAdditionalDetails()
+    {
+        using var scope = Fixture.CreateScope();
+        var composer = scope.ServiceProvider.GetRequiredService<INotificationComposer>();
+        var normalizer = scope.ServiceProvider.GetRequiredService<LogEventNormalizer>();
+        const string stack = """
+            System.IO.FileNotFoundException: Load failed
+            File name: 'settings.json'
+             ---> System.IO.IOException: Disk error
+               --- End of inner exception stack trace ---
+            """;
+        var logEvent = normalizer.Normalize(
+        [
+            new Dictionary<string, string>
+            {
+                ["_msg"] = "Request failed",
+                ["severity_text"] = "Error",
+                ["exception.message"] = "Load failed",
+                ["exception.stacktrace"] = stack
+            }
+        ]).ShouldHaveSingleItem();
+
+        var notification = composer.ComposeLogEvent(logEvent.Timestamp, logEvent);
+
+        using var document = ReadExceptions(notification.Message);
+        document.RootElement[0].GetProperty("Message").GetString().ShouldBe("Load failed\nFile name: 'settings.json'");
+        document.RootElement[1].GetProperty("Message").GetString().ShouldBe("Disk error");
+    }
+
+    [Fact(DisplayName = "Compose log event should preserve original stack when nested exception text is incomplete")]
+    public void ComposeLogEvent_Should_PreserveOriginalStack_When_NestedExceptionTextIsIncomplete()
+    {
+        using var scope = Fixture.CreateScope();
+        var composer = scope.ServiceProvider.GetRequiredService<INotificationComposer>();
+        var normalizer = scope.ServiceProvider.GetRequiredService<LogEventNormalizer>();
+        const string stack = "System.Exception: Outer\n ---> System.Exception: Truncated";
+        var logEvent = normalizer.Normalize(
+        [
+            new Dictionary<string, string>
+            {
+                ["_msg"] = "Request failed",
+                ["severity_text"] = "Error",
+                ["exception.stacktrace"] = stack
+            }
+        ]).ShouldHaveSingleItem();
+
+        var notification = composer.ComposeLogEvent(logEvent.Timestamp, logEvent);
+
+        using var document = ReadExceptions(notification.Message);
+        var exception = document.RootElement.EnumerateArray().ShouldHaveSingleItem();
+        exception.GetProperty("Depth").GetInt32().ShouldBe(0);
+        exception.GetProperty("StackTraceString").GetString().ShouldBe(stack);
+    }
+
+    [Theory(DisplayName = "Compose log event should bound nested exceptions without breaking JSON when chain exceeds message budget")]
+    [InlineData(0)]
+    [InlineData(1000)]
+    [InlineData(1750)]
+    [InlineData(5000)]
+    public void ComposeLogEvent_Should_BoundNestedExceptionsWithoutBreakingJson_When_ChainExceedsMessageBudget(int logsUrlPadding)
+    {
+        using var scope = Fixture.CreateScope();
+        var composer = new TelegramNotificationComposer(
+            scope.ServiceProvider.GetRequiredService<ITopicRouter>(),
+            Options.Create(new VictoriaLogsOptions
+            {
+                GrafanaLogsUrl = "https://grafana.example/" + new string('a', logsUrlPadding)
+            }));
+        var normalizer = scope.ServiceProvider.GetRequiredService<LogEventNormalizer>();
+        var content = string.Concat(Enumerable.Repeat("Ошибка \"<&>\" \\ 🙂", 120));
+        var stack = "System.Exception: " + content
+                    + string.Concat(Enumerable.Repeat("\n ---> System.Exception: " + content, 19))
+                    + "\n   at Cause.Read()"
+                    + string.Concat(Enumerable.Repeat("\n   --- End of inner exception stack trace ---\n   at Wrapper.Run()", 19));
+        var logEvent = normalizer.Normalize(
+        [
+            new Dictionary<string, string>
+            {
+                ["_msg"] = new string('m', 2000),
+                ["severity_text"] = "Error",
+                ["service.name"] = content,
+                ["k8s.namespace.name"] = content,
+                ["k8s.container.name"] = content,
+                ["trace_id"] = content,
+                ["exception.message"] = content,
+                ["exception.stacktrace"] = stack,
+                ["exception.hresult"] = "-2147467259",
+                ["exception.source"] = content,
+                ["EnvironmentName"] = "Production"
+            }
+        ]).ShouldHaveSingleItem();
+
+        var notification = composer.ComposeLogEvent(logEvent.Timestamp, logEvent);
+
+        notification.Message.Length.ShouldBeLessThanOrEqualTo(NotificationMessage.MaxLength);
+        using var document = ReadExceptions(notification.Message);
+        var exceptions = document.RootElement.EnumerateArray().ToArray();
+        exceptions.Select(item => item.GetProperty("Depth").GetInt32()).ShouldBe([0, 1, 2, 3, 19]);
+        foreach (var exception in exceptions)
+        {
+            var message = exception.GetProperty("Message").GetString().ShouldNotBeNull();
+            message.ShouldNotContain("\uFFFD");
+            message.ShouldEndWith("…");
+            content.ShouldStartWith(message[..^1]);
+        }
+
+        notification.Message.ShouldContain("15 exceptions omitted");
+        notification.Message.Split("<pre>").Length.ShouldBe(2);
+        notification.Message.Split("</pre>").Length.ShouldBe(2);
     }
 
     [Theory(DisplayName = "Compose log event should render optional exception metadata when explicit fields are present")]
@@ -553,7 +720,7 @@ public sealed class TelegramNotificationComposerTests(IntegrationTestFixture fix
         exception.GetProperty("Source").ValueKind.ShouldBe(JsonValueKind.String);
         foreach (var property in exception.EnumerateObject())
         {
-            if (property.NameEquals("HResult"))
+            if (property.NameEquals("HResult") || property.NameEquals("Depth"))
             {
                 continue;
             }
@@ -698,6 +865,14 @@ public sealed class TelegramNotificationComposerTests(IntegrationTestFixture fix
 
         retryNotification.Key.ShouldBe(firstNotification.Key);
         scheduledRepeatNotification.Key.ShouldNotBe(firstNotification.Key);
+    }
+
+    private static JsonDocument ReadExceptions(string message)
+    {
+        var decoded = WebUtility.HtmlDecode(message).ReplaceLineEndings("\n");
+        var start = decoded.IndexOf("exceptions:\n", StringComparison.Ordinal) + "exceptions:\n".Length;
+        var end = decoded.IndexOf("\n]", start, StringComparison.Ordinal) + 2;
+        return JsonDocument.Parse(decoded[start..end]);
     }
 
     private static AlertmanagerAlert CreateAlert(string owner, string fingerprint)
