@@ -20,6 +20,11 @@ and sends messages through `Telegram.Bot`.
   those values are present. Values whose field names indicate secrets or credentials
   are redacted before Telegram rendering. Optional sections are reduced before the
   message can exceed Telegram's delivery limit.
+- The copyable log block contains `message`, then `exceptions`, then `fields`.
+  Explicit `exception.hresult` (a signed 32-bit decimal integer) and
+  `exception.source` fields are rendered as optional `HResult` and `Source` in
+  `exceptions`, without duplication in `fields`. Invalid HRESULT values stay in
+  `fields`; generic `source` and `HResult` fields are not reclassified.
 - An idempotency key and a PostgreSQL unique constraint suppress webhook retries and
   repeated processing of the same log window.
 - Telegram traffic prefers the WireGuard-backed `telegram-vpn` HTTP proxy and falls

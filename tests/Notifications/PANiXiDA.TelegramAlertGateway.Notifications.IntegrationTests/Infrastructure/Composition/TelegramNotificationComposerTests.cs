@@ -316,11 +316,78 @@ public sealed class TelegramNotificationComposerTests(IntegrationTestFixture fix
         exception.GetProperty("Message").GetString().ShouldBe(exceptionMessage);
         exception.GetProperty("StackTraceString").GetString().ShouldBe(stackTrace);
         exception.TryGetProperty("HResult", out _).ShouldBeFalse();
+        exception.TryGetProperty("Source", out _).ShouldBeFalse();
         decoded[fieldsStart..].ShouldNotContain(messageField);
         decoded.Split("<pre>").Length.ShouldBe(2);
         decoded.Split("</pre>").Length.ShouldBe(2);
         notification.Message.ShouldNotContain("⚠️");
         notification.Message.ShouldContain("&lt;test&gt;");
+    }
+
+    [Theory(DisplayName = "Compose log event should render optional exception metadata when explicit fields are present")]
+    [InlineData("-2147467259", "System.Web", -2147467259)]
+    [InlineData("0", "", 0)]
+    [InlineData("", "My <service> \"assembly\"", null)]
+    [InlineData(" ", " ", null)]
+    [InlineData("invalid", "", null)]
+    [InlineData("2147483648", "", null)]
+    public void ComposeLogEvent_Should_RenderOptionalExceptionMetadata_When_ExplicitFieldsArePresent(
+        string hResult,
+        string source,
+        int? expectedHResult)
+    {
+        using var scope = Fixture.CreateScope();
+        var composer = scope.ServiceProvider.GetRequiredService<INotificationComposer>();
+        var normalizer = scope.ServiceProvider.GetRequiredService<LogEventNormalizer>();
+        var logEvent = normalizer.Normalize(
+        [
+            new Dictionary<string, string>
+            {
+                ["_msg"] = "Request failed",
+                ["severity_text"] = "Error",
+                ["exception.hresult"] = hResult,
+                ["exception.source"] = source,
+                ["source"] = "stdout",
+                ["HResult"] = "generic context"
+            }
+        ]).ShouldHaveSingleItem();
+
+        var notification = composer.ComposeLogEvent(logEvent.Timestamp, logEvent);
+
+        var decoded = WebUtility.HtmlDecode(notification.Message).ReplaceLineEndings("\n");
+        var start = decoded.IndexOf("exceptions:\n", StringComparison.Ordinal);
+        var fieldsStart = decoded.IndexOf("fields:\n", StringComparison.Ordinal);
+        if (expectedHResult.HasValue || !string.IsNullOrWhiteSpace(source))
+        {
+            start.ShouldBeGreaterThan(0);
+            using var document = JsonDocument.Parse(decoded[(start + "exceptions:\n".Length)..fieldsStart]);
+            var exception = document.RootElement.EnumerateArray().ShouldHaveSingleItem();
+            exception.TryGetProperty("HResult", out var hResultProperty).ShouldBe(expectedHResult.HasValue);
+            if (expectedHResult.HasValue)
+            {
+                hResultProperty.GetInt32().ShouldBe(expectedHResult.Value);
+                decoded[fieldsStart..].ShouldNotContain("\"exception.hresult\":");
+            }
+
+            exception.TryGetProperty("Source", out var sourceProperty).ShouldBe(!string.IsNullOrWhiteSpace(source));
+            if (!string.IsNullOrWhiteSpace(source))
+            {
+                sourceProperty.GetString().ShouldBe(source);
+                decoded[fieldsStart..].ShouldNotContain("\"exception.source\":");
+            }
+        }
+        else
+        {
+            start.ShouldBe(-1);
+            if (!string.IsNullOrWhiteSpace(hResult))
+            {
+                decoded[fieldsStart..].ShouldContain($"\"exception.hresult\": \"{hResult}\"");
+            }
+        }
+
+        decoded[fieldsStart..].ShouldContain("\"source\": \"stdout\"");
+        decoded[fieldsStart..].ShouldContain("\"HResult\": \"generic context\"");
+        notification.Message.Length.ShouldBeLessThanOrEqualTo(NotificationMessage.MaxLength);
     }
 
     [Fact(DisplayName = "Compose log event should preserve distinct error fields when exception message is provided")]
@@ -423,6 +490,8 @@ public sealed class TelegramNotificationComposerTests(IntegrationTestFixture fix
             Fields: new Dictionary<string, string>
             {
                 ["exception.message"] = encodedContent,
+                ["exception.hresult"] = "-2147467259",
+                ["exception.source"] = encodedContent,
                 ["UserId"] = encodedContent,
                 ["UserName"] = encodedContent
             },
@@ -461,6 +530,8 @@ public sealed class TelegramNotificationComposerTests(IntegrationTestFixture fix
                 ["exception.type"] = content,
                 ["exception.message"] = content,
                 ["exception.stacktrace"] = content,
+                ["exception.hresult"] = "-2147467259",
+                ["exception.source"] = content,
                 ["EnvironmentName"] = "Production"
             }
         ]).ShouldHaveSingleItem();
@@ -478,8 +549,15 @@ public sealed class TelegramNotificationComposerTests(IntegrationTestFixture fix
 
         using var document = JsonDocument.Parse(decoded[start..end]);
         var exception = document.RootElement.EnumerateArray().ShouldHaveSingleItem();
+        exception.GetProperty("HResult").GetInt32().ShouldBe(-2147467259);
+        exception.GetProperty("Source").ValueKind.ShouldBe(JsonValueKind.String);
         foreach (var property in exception.EnumerateObject())
         {
+            if (property.NameEquals("HResult"))
+            {
+                continue;
+            }
+
             var value = property.Value.GetString().ShouldNotBeNull();
             value.ShouldNotContain("\uFFFD");
             if (value == "… (stack trace omitted)")

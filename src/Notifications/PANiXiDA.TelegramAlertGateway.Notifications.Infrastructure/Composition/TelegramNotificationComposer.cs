@@ -28,6 +28,8 @@ internal sealed class TelegramNotificationComposer(
     private const int MaxAlertBlockLength = 2600;
     private const int MaxLogFieldsLength = 700;
     private const int PageContentLimit = 3400;
+    private const string ExceptionHResultFieldName = "exception.hresult";
+    private const string ExceptionSourceFieldName = "exception.source";
     private static readonly string[] ExceptionMessageFieldNames = ["exception.message", "error", "err"];
     private static readonly TimeSpan MetricDeliveryDeduplicationWindow = TimeSpan.FromMinutes(5);
     private static readonly JsonSerializerOptions LogDetailsJsonOptions = new()
@@ -223,9 +225,13 @@ internal sealed class TelegramNotificationComposer(
             .Append(HtmlTruncate(logEvent.Message, messageBudget));
 
         var exceptionMessage = GetValue(logEvent.Fields, ExceptionMessageFieldNames);
+        var exceptionHResult = GetExceptionHResult(logEvent.Fields);
+        var exceptionSource = GetValue(logEvent.Fields, ExceptionSourceFieldName);
         var exceptions = FormatExceptions(
             logEvent: logEvent,
             exceptionMessage: exceptionMessage,
+            hResult: exceptionHResult,
+            source: exceptionSource,
             messageBudget: exceptionMessageBudget,
             stackTraceBudget: stackTraceBudget);
         if (exceptions is not null)
@@ -236,8 +242,12 @@ internal sealed class TelegramNotificationComposer(
         }
 
         var fields = logEvent.Fields
-            .Where(field => !ExceptionMessageFieldNames.Contains(field.Key, StringComparer.OrdinalIgnoreCase)
-                            || !string.Equals(field.Value, exceptionMessage, StringComparison.Ordinal))
+            .Where(field => !(ExceptionMessageFieldNames.Contains(field.Key, StringComparer.OrdinalIgnoreCase)
+                             && string.Equals(field.Value, exceptionMessage, StringComparison.Ordinal))
+                            && !(exceptionHResult.HasValue
+                                 && string.Equals(field.Key, ExceptionHResultFieldName, StringComparison.OrdinalIgnoreCase))
+                            && !(exceptionSource is not null
+                                 && string.Equals(field.Key, ExceptionSourceFieldName, StringComparison.OrdinalIgnoreCase)))
             .ToDictionary(field => field.Key, field => field.Value);
         if (fieldsBudget > 0 && fields.Count > 0)
         {
@@ -270,7 +280,9 @@ internal sealed class TelegramNotificationComposer(
         var hasFields = logEvent.Fields.Count > 0;
         var hasException = !string.IsNullOrWhiteSpace(logEvent.ExceptionType)
                            || !string.IsNullOrWhiteSpace(logEvent.StackTrace)
-                           || GetValue(logEvent.Fields, ExceptionMessageFieldNames) is not null;
+                           || GetValue(logEvent.Fields, ExceptionMessageFieldNames) is not null
+                           || GetExceptionHResult(logEvent.Fields).HasValue
+                           || GetValue(logEvent.Fields, ExceptionSourceFieldName) is not null;
         return (hasFields, hasException) switch
         {
             (true, true) => 900,
@@ -390,10 +402,12 @@ internal sealed class TelegramNotificationComposer(
     private static string? FormatExceptions(
         LogEvent logEvent,
         string? exceptionMessage,
+        int? hResult,
+        string? source,
         int messageBudget,
         int stackTraceBudget)
     {
-        var exception = new Dictionary<string, string>();
+        var exception = new Dictionary<string, object>();
         if (!string.IsNullOrWhiteSpace(logEvent.ExceptionType))
         {
             exception["ClassName"] = TruncateJsonValue(logEvent.ExceptionType, 180);
@@ -411,9 +425,30 @@ internal sealed class TelegramNotificationComposer(
                 : "… (stack trace omitted)";
         }
 
+        if (hResult.HasValue)
+        {
+            exception["HResult"] = hResult.Value;
+        }
+
+        if (source is not null)
+        {
+            exception["Source"] = TruncateJsonValue(source, 180);
+        }
+
         return exception.Count == 0
             ? null
             : $"exceptions:{Environment.NewLine}{JsonSerializer.Serialize(new[] { exception }, LogDetailsJsonOptions)}";
+    }
+
+    private static int? GetExceptionHResult(IReadOnlyDictionary<string, string> fields)
+    {
+        return int.TryParse(
+            s: GetValue(fields, ExceptionHResultFieldName),
+            style: NumberStyles.Integer,
+            provider: CultureInfo.InvariantCulture,
+            result: out var hResult)
+            ? hResult
+            : null;
     }
 
     private static string TruncateJsonValue(string value, int maxEncodedLength)
