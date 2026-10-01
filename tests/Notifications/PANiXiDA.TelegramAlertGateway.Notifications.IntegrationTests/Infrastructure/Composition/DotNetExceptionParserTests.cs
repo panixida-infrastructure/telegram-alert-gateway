@@ -59,7 +59,7 @@ public sealed class DotNetExceptionParserTests
     [Fact(DisplayName = "Parse should preserve native error code when inner socket exception includes a code")]
     public void Parse_Should_PreserveNativeErrorCode_When_InnerSocketExceptionIncludesACode()
     {
-        var inner = new SocketException(10061);
+        var inner = new SocketException((int)SocketError.ConnectionRefused);
         var outer = new IOException("Connection failed", inner);
 
         var parsed = DotNetExceptionParser.Parse(Format(outer));
@@ -67,8 +67,7 @@ public sealed class DotNetExceptionParserTests
         parsed.ShouldNotBeNull();
         parsed[1].ClassName.ShouldBe(typeof(SocketException).FullName);
         var message = parsed[1].Message.ShouldNotBeNull();
-        message.ShouldContain("10061");
-        message.ShouldContain(inner.Message);
+        message.ShouldBe($"({inner.NativeErrorCode}): {inner.Message}");
         parsed[1].Depth.ShouldBe(1);
     }
 
