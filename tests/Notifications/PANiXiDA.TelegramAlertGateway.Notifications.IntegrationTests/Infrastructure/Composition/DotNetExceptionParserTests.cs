@@ -22,7 +22,7 @@ public sealed class DotNetExceptionParserTests
         parsed.ShouldNotBeNull();
         parsed.Select(item => item.Depth).ShouldBe([0, 1, 2]);
         parsed.Select(item => item.ClassName).ShouldBe(new[] { outer, middle, inner }.Select(item => item.GetType().FullName));
-        parsed.Select(item => item.Message).ShouldBe(new[] { outer.Message, middle.Message, inner.Message });
+        parsed.Select(item => item.Message).ShouldBe([outer.Message, middle.Message, inner.Message]);
         parsed.Select(item => item.StackTrace).ShouldBe(new[] { outer, middle, inner }
             .Select(item => item.StackTrace.ShouldNotBeNull().ReplaceLineEndings("\n")));
     }
@@ -50,10 +50,10 @@ public sealed class DotNetExceptionParserTests
 
         parsed.ShouldNotBeNull();
         parsed.Select(item => item.Depth).ShouldBe([0, 1, 2, 3, 2, 3]);
-        parsed.Select(item => item.Message).ShouldBe(new[]
-        {
+        parsed.Select(item => item.Message).ShouldBe(
+        [
             outer.Message, aggregate.Message, first.Message, leaf.Message, second.Message, "Invalid argument"
-        });
+        ]);
     }
 
     [Fact(DisplayName = "Parse should preserve native error code when inner socket exception includes a code")]
@@ -69,6 +69,22 @@ public sealed class DotNetExceptionParserTests
         var message = parsed[1].Message.ShouldNotBeNull();
         message.ShouldBe($"({inner.NativeErrorCode}): {inner.Message}");
         parsed[1].Depth.ShouldBe(1);
+    }
+
+    [Fact(DisplayName = "Parse should preserve generic type names when runtime formats constructed generic exceptions")]
+    public void Parse_Should_PreserveGenericTypeNames_When_RuntimeFormatsConstructedGenericExceptions()
+    {
+        var inner = Capture(new GenericException<Dictionary<string, int[,]>>("Generic cause", new TimeoutException("Timeout")));
+        var outer = Capture(new GenericException<string>("Generic wrapper", inner));
+
+        var parsed = DotNetExceptionParser.Parse(Format(outer));
+
+        parsed.ShouldNotBeNull();
+        parsed.Select(item => item.Depth).ShouldBe([0, 1, 2]);
+        parsed.Select(item => item.ClassName).ShouldBe([outer.GetType().ToString(), inner.GetType().ToString(), typeof(TimeoutException).FullName]);
+        parsed.Select(item => item.Message).ShouldBe([outer.Message, inner.Message, "Timeout"]);
+        parsed[0].StackTrace.ShouldBe(outer.StackTrace.ShouldNotBeNull().ReplaceLineEndings("\n"));
+        parsed[1].StackTrace.ShouldBe(inner.StackTrace.ShouldNotBeNull().ReplaceLineEndings("\n"));
     }
 
     [Theory(DisplayName = "Parse should return no chain when input has no complete supported exception structure")]
@@ -123,6 +139,8 @@ public sealed class DotNetExceptionParserTests
 
         parsed.ShouldBeNull();
     }
+
+    private sealed class GenericException<T>(string message, Exception innerException) : Exception(message, innerException);
 
     private static Exception Capture(Exception exception)
     {

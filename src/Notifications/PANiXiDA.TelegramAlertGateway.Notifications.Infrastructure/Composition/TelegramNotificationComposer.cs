@@ -414,9 +414,9 @@ internal sealed class TelegramNotificationComposer(
                           ClassName: logEvent.ExceptionType,
                           Message: exceptionMessage,
                           StackTrace: logEvent.StackTrace)];
-        var visible = details.Count > MaxDisplayedExceptions
-            ? details.Take(MaxDisplayedExceptions - 1).Append(details[^1]).ToArray()
-            : details.ToArray();
+        LogExceptionDetails[] visible = details.Count > MaxDisplayedExceptions
+            ? [.. details.Take(MaxDisplayedExceptions - 1), details[^1]]
+            : [.. details];
         var exceptions = visible.Select((detail, index) => FormatException(
                 detail: index == 0 ? detail with
                 {

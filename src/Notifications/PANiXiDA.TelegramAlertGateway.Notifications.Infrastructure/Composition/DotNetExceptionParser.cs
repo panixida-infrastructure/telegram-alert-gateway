@@ -196,7 +196,7 @@ internal static partial class DotNetExceptionParser
     }
 
     [GeneratedRegex(
-        "^(?<type>[\\p{L}_][\\p{L}\\p{N}_.+`]*)(?:(?<code> \\([^\\r\\n)]*\\))?: (?<message>.*))?$",
+        "^(?<type>[\\p{L}_][\\p{L}\\p{N}_.+`]*(?:\\[[\\p{L}\\p{N}_.+`,\\[\\]*]+\\])?)(?:(?<code> \\([^\\r\\n)]*\\))?: (?<message>.*))?$",
         RegexOptions.CultureInvariant)]
     private static partial Regex ExceptionHeaderRegex();
 
