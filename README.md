@@ -16,13 +16,17 @@ and sends messages through `Telegram.Bot`.
   ingestion paths are not counted twice; different errors remain separate messages.
 - A log message includes service, Kubernetes namespace/container, error text,
   exception type, the top of the stack trace, trace id, generic structured fields,
-  and a Grafana Logs link narrowed to the source stream and aggregation window when
-  those values are present. Values whose field names indicate secrets or credentials
+  and a Grafana Logs link matching `log.record.uid` exactly within the aggregation
+  window. Records without that ID retain the source stream/window link. Repeated
+  errors still form one alert; its ID and link identify the representative record
+  shown in the message. Values whose field names indicate secrets or credentials
   are redacted before Telegram rendering. Optional sections are reduced before the
   message can exceed Telegram's delivery limit.
 - The copyable log block contains `message`, then `exceptions`, then `fields`.
   Truncated fields report the exact omitted count, including when the entire fields
   block is removed. Exception metadata rendered separately is excluded from that count.
+  `log.record.uid` is prioritized in `fields`; collector-generated UUIDs remain
+  copyable even when the final message budget requires dropping links and other fields.
   Explicit `exception.hresult` (a signed 32-bit decimal integer) and
   `exception.source` fields are rendered as optional `HResult` and `Source` in
   `exceptions`, without duplication in `fields`. Invalid HRESULT values stay in

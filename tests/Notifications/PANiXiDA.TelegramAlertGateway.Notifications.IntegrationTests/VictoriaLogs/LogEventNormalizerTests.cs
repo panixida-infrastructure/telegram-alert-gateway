@@ -9,6 +9,27 @@ namespace PANiXiDA.TelegramAlertGateway.Notifications.IntegrationTests.VictoriaL
 public sealed class LogEventNormalizerTests(IntegrationTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
+    [Fact(DisplayName = "Normalize should preserve the representative record UID when repeated errors have distinct IDs")]
+    public void Normalize_Should_PreserveRepresentativeRecordUid_When_RepeatedErrorsHaveDistinctIds()
+    {
+        using var scope = Fixture.CreateScope();
+        var normalizer = scope.ServiceProvider.GetRequiredService<LogEventNormalizer>();
+        var records = Enumerable.Range(1, 2).Select(index => (IReadOnlyDictionary<string, string>)new Dictionary<string, string>
+        {
+            ["_time"] = $"2026-10-02T17:00:0{index}Z",
+            ["_msg"] = "Repeated failure",
+            ["severity_text"] = "Error",
+            ["service.name"] = "test-service",
+            ["log.record.uid"] = $"550e8400-e29b-41d4-a716-44665544000{index}"
+        }).ToArray();
+
+        var logEvent = normalizer.Normalize(records).ShouldHaveSingleItem();
+
+        logEvent.Occurrences.ShouldBe(2);
+        var representative = records.Single(record => DateTimeOffset.Parse(record["_time"]) == logEvent.Timestamp);
+        logEvent.Fields["log.record.uid"].ShouldBe(representative["log.record.uid"]);
+    }
+
     [Fact(DisplayName = "Normalize should deduplicate direct and container copies of one error when ingestion paths differ")]
     public void Normalize_Should_DeduplicateDirectAndContainerCopiesOfOneError_When_IngestionPathsDiffer()
     {
