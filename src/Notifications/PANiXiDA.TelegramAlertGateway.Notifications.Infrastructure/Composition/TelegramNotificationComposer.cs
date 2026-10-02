@@ -355,6 +355,7 @@ internal sealed class TelegramNotificationComposer(
                 refId = "A",
                 datasource = new { type = VictoriaLogsDataSourceType, uid = VictoriaLogsDataSourceUid },
                 editorMode = "code",
+                queryType = "instant",
                 expr = query,
                 query
             });
