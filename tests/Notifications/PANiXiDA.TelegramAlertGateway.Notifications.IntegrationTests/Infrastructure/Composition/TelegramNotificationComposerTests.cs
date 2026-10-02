@@ -272,6 +272,7 @@ public sealed class TelegramNotificationComposerTests(IntegrationTestFixture fix
             }</pre>
             """.ReplaceLineEndings("\n"));
         notification.Message.ShouldContain("Logs for this source and window");
+        notification.Message.ShouldContain("%22queryType%22%3A%22instant%22");
         notification.Message.ShouldContain(
             "_stream_id%3A0000007b000001c850d9950ea6196b1a4812081265faa1c7");
         notification.Message.ShouldContain(
@@ -1039,6 +1040,7 @@ public sealed class TelegramNotificationComposerTests(IntegrationTestFixture fix
         using var panes = JsonDocument.Parse(parameters["panes"].ShouldNotBeNull());
         var pane = panes.RootElement.GetProperty("logs");
         var query = pane.GetProperty("queries")[0];
+        query.GetProperty("queryType").GetString().ShouldBe("instant");
         query.GetProperty("expr").GetString().ShouldBe($"log.record.uid:={JsonSerializer.Serialize(recordUid)}");
         query.GetProperty("query").GetString().ShouldBe(query.GetProperty("expr").GetString());
         pane.GetProperty("range").GetProperty("from").GetString()
