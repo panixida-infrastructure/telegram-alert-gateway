@@ -25,6 +25,8 @@ internal sealed class TelegramNotificationComposer(
     private const string PreformattedTextClosingTag = "</pre>";
     private const string VictoriaLogsDataSourceType = "victoriametrics-logs-datasource";
     private const string VictoriaLogsDataSourceUid = "victorialogs";
+    private const string VictoriaTracesDataSourceType = "jaeger";
+    private const string VictoriaTracesDataSourceUid = "victoriatraces";
     private const int MaxAlertBlockLength = 2600;
     private const int MaxLogFieldsLength = 700;
     private const int MaxDisplayedExceptions = 5;
@@ -250,21 +252,21 @@ internal sealed class TelegramNotificationComposer(
                             && !(exceptionSource is not null
                                  && string.Equals(field.Key, ExceptionSourceFieldName, StringComparison.OrdinalIgnoreCase)))
             .ToDictionary(field => field.Key, field => field.Value);
-        if (fieldsBudget > 0 && fields.Count > 0)
+        if (fields.Count > 0)
         {
             message.AppendLine()
                 .AppendLine()
-                .Append(Html(FormatFields(fields, fieldsBudget)));
+                .Append(Html(fieldsBudget > 0
+                    ? FormatFields(fields, fieldsBudget)
+                    : FormatOmittedFieldsNotice(fields.Count)));
         }
 
         message.AppendLine(PreformattedTextClosingTag);
-
-        if (!string.IsNullOrWhiteSpace(logEvent.TraceId))
-        {
-            message.Append("🔎 trace: <code>")
-                .Append(HtmlTruncate(logEvent.TraceId, 180))
-                .AppendLine("</code>");
-        }
+        AppendTrace(
+            message: message,
+            windowStartUtc: windowStartUtc,
+            traceId: logEvent.TraceId,
+            includeLink: logsUrl is not null);
 
         if (!string.IsNullOrWhiteSpace(logsUrl))
         {
@@ -274,6 +276,29 @@ internal sealed class TelegramNotificationComposer(
         }
 
         return message.ToString();
+    }
+
+    private void AppendTrace(
+        StringBuilder message,
+        DateTimeOffset windowStartUtc,
+        string? traceId,
+        bool includeLink)
+    {
+        if (string.IsNullOrWhiteSpace(traceId))
+        {
+            return;
+        }
+
+        var traceUrl = includeLink ? BuildGrafanaTraceUrl(windowStartUtc, traceId) : null;
+        message.Append("🔎 trace: ");
+        if (traceUrl is null)
+        {
+            message.Append("<code>").Append(HtmlTruncate(traceId, 180)).AppendLine("</code>");
+            return;
+        }
+
+        message.Append("<a href=\"").Append(Html(traceUrl)).Append("\">")
+            .Append(Html(traceId)).AppendLine("</a>");
     }
 
     private static int GetPreferredMessageBudget(LogEvent logEvent)
@@ -312,27 +337,60 @@ internal sealed class TelegramNotificationComposer(
         }
 
         var query = $"_stream_id:{streamId}";
+        return BuildGrafanaExploreUrl(
+            windowStartUtc: windowStartUtc,
+            configuredUri: configuredUri,
+            paneKey: "logs",
+            dataSourceUid: VictoriaLogsDataSourceUid,
+            query: new
+            {
+                refId = "A",
+                datasource = new { type = VictoriaLogsDataSourceType, uid = VictoriaLogsDataSourceUid },
+                editorMode = "code",
+                expr = query,
+                query
+            });
+    }
+
+    private string? BuildGrafanaTraceUrl(DateTimeOffset windowStartUtc, string traceId)
+    {
+        if (traceId.Length is not (16 or 32) || !traceId.All(Uri.IsHexDigit)
+            || !Uri.TryCreate(
+                uriString: _victoriaLogsOptions.GrafanaLogsUrl,
+                uriKind: UriKind.Absolute,
+                result: out var configuredUri)
+            || (configuredUri.Scheme != Uri.UriSchemeHttp && configuredUri.Scheme != Uri.UriSchemeHttps))
+        {
+            return null;
+        }
+
+        return BuildGrafanaExploreUrl(
+            windowStartUtc: windowStartUtc,
+            configuredUri: configuredUri,
+            paneKey: "trace",
+            dataSourceUid: VictoriaTracesDataSourceUid,
+            query: new
+            {
+                refId = "A",
+                datasource = new { type = VictoriaTracesDataSourceType, uid = VictoriaTracesDataSourceUid },
+                query = traceId
+            });
+    }
+
+    private string BuildGrafanaExploreUrl(
+        DateTimeOffset windowStartUtc,
+        Uri configuredUri,
+        string paneKey,
+        string dataSourceUid,
+        object query)
+    {
         var windowEndUtc = windowStartUtc.AddSeconds(_victoriaLogsOptions.WindowSeconds);
         var panes = new Dictionary<string, object>
         {
-            ["logs"] = new
+            [paneKey] = new
             {
-                datasource = VictoriaLogsDataSourceUid,
-                queries = new[]
-                {
-                    new
-                    {
-                        refId = "A",
-                        datasource = new
-                        {
-                            type = VictoriaLogsDataSourceType,
-                            uid = VictoriaLogsDataSourceUid
-                        },
-                        editorMode = "code",
-                        expr = query,
-                        query
-                    }
-                },
+                datasource = dataSourceUid,
+                queries = new[] { query },
                 range = new
                 {
                     from = windowStartUtc.ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture),
@@ -381,18 +439,24 @@ internal sealed class TelegramNotificationComposer(
             return formattedFields;
         }
 
-        var omittedNotice = $"{Environment.NewLine}… (some fields omitted)";
         var visibleFields = new Dictionary<string, string>();
         foreach (var field in orderedFields)
         {
             visibleFields.Add(field.Key, field.Value);
+            var omittedNotice = Environment.NewLine + FormatOmittedFieldsNotice(orderedFields.Count - visibleFields.Count);
             if (Html(SerializeFields(visibleFields) + omittedNotice).Length > maxEncodedLength)
             {
                 visibleFields.Remove(field.Key);
             }
         }
 
-        return SerializeFields(visibleFields) + omittedNotice;
+        return SerializeFields(visibleFields) + Environment.NewLine
+               + FormatOmittedFieldsNotice(orderedFields.Count - visibleFields.Count);
+    }
+
+    private static string FormatOmittedFieldsNotice(int count)
+    {
+        return $"… ({count} fields omitted)";
     }
 
     private static string SerializeFields(IReadOnlyDictionary<string, string> fields)

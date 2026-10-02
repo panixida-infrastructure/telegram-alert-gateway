@@ -707,14 +707,7 @@ public sealed class TelegramNotificationComposerTests(IntegrationTestFixture fix
 
         notification.Message.Length.ShouldBeLessThanOrEqualTo(NotificationMessage.MaxLength);
         var decoded = WebUtility.HtmlDecode(notification.Message).ReplaceLineEndings("\n");
-        var start = decoded.IndexOf("exceptions:\n", StringComparison.Ordinal) + "exceptions:\n".Length;
-        var end = decoded.IndexOf("\n\nfields:", start, StringComparison.Ordinal);
-        if (end < 0)
-        {
-            end = decoded.IndexOf("</pre>", start, StringComparison.Ordinal);
-        }
-
-        using var document = JsonDocument.Parse(decoded[start..end]);
+        using var document = ReadExceptions(notification.Message);
         var exception = document.RootElement.EnumerateArray().ShouldHaveSingleItem();
         exception.GetProperty("HResult").GetInt32().ShouldBe(-2147467259);
         exception.GetProperty("Source").ValueKind.ShouldBe(JsonValueKind.String);
@@ -744,6 +737,7 @@ public sealed class TelegramNotificationComposerTests(IntegrationTestFixture fix
     [InlineData(0, 700)]
     [InlineData(1000, 450)]
     [InlineData(1750, 250)]
+    [InlineData(5000, 0)]
     public void ComposeLogEvent_Should_PreserveValidJson_When_FieldsExceedMessageBudget(
         int logsUrlPadding,
         int expectedFieldsBudget)
@@ -779,24 +773,141 @@ public sealed class TelegramNotificationComposerTests(IntegrationTestFixture fix
         var notification = composer.ComposeLogEvent(windowStart, logEvent);
 
         notification.Message.Length.ShouldBeLessThanOrEqualTo(NotificationMessage.MaxLength);
+        if (expectedFieldsBudget == 0)
+        {
+            notification.Message.ShouldNotContain("fields:");
+            WebUtility.HtmlDecode(notification.Message).ShouldContain($"… ({fields.Count} fields omitted)");
+            return;
+        }
+
         var fieldsStart = notification.Message.IndexOf("fields:", StringComparison.Ordinal);
         fieldsStart.ShouldBeGreaterThanOrEqualTo(0);
         var fieldsEnd = notification.Message.IndexOf("</pre>", fieldsStart, StringComparison.Ordinal);
         var encodedFields = notification.Message[fieldsStart..fieldsEnd];
         encodedFields.Length.ShouldBeLessThanOrEqualTo(expectedFieldsBudget);
         var decodedFields = WebUtility.HtmlDecode(encodedFields).ReplaceLineEndings("\n");
-        const string omittedNotice = "\n… (some fields omitted)";
-        decodedFields.ShouldEndWith(omittedNotice);
-        var json = decodedFields["fields:\n".Length..^omittedNotice.Length];
+        var noticeStart = decodedFields.LastIndexOf("\n… (", StringComparison.Ordinal);
+        noticeStart.ShouldBeGreaterThan(0);
+        var json = decodedFields["fields:\n".Length..noticeStart];
         using var document = JsonDocument.Parse(json);
         var properties = document.RootElement.EnumerateObject().ToArray();
         properties.Length.ShouldBeGreaterThan(0);
         properties.Length.ShouldBeLessThan(fields.Count);
+        decodedFields.ShouldEndWith($"\n… ({fields.Count - properties.Length} fields omitted)");
         document.RootElement.TryGetProperty("A", out _).ShouldBeFalse();
         foreach (var property in properties)
         {
             property.Value.GetString().ShouldBe(fields[property.Name]);
         }
+    }
+
+    [Theory(DisplayName = "Compose log event should count only omitted fields when exception metadata is rendered separately")]
+    [InlineData(1)]
+    [InlineData(9)]
+    [InlineData(10)]
+    [InlineData(99)]
+    [InlineData(100)]
+    public void ComposeLogEvent_Should_CountOnlyOmittedFields_When_ExceptionMetadataIsRenderedSeparately(int omittedCount)
+    {
+        using var scope = Fixture.CreateScope();
+        var composer = scope.ServiceProvider.GetRequiredService<INotificationComposer>();
+        var fields = Enumerable.Range(0, omittedCount).ToDictionary(index => $"Long{index}", _ => new string('x', 1000));
+        fields.Add("Small", "retained");
+        fields.Add("exception.message", "Cause");
+        fields.Add("exception.hresult", "-1");
+        fields.Add("exception.source", "Demo");
+        var logEvent = CreateLogEvent(fields: fields);
+
+        var notification = composer.ComposeLogEvent(logEvent.Timestamp, logEvent);
+
+        var decoded = WebUtility.HtmlDecode(notification.Message);
+        decoded.ShouldContain("\"Small\": \"retained\"");
+        decoded.ShouldContain($"… ({omittedCount} fields omitted)");
+        decoded.ShouldNotContain("some fields omitted");
+        notification.Message.Length.ShouldBeLessThanOrEqualTo(NotificationMessage.MaxLength);
+    }
+
+    [Theory(DisplayName = "Compose log event should link trace in Grafana when trace id is valid")]
+    [InlineData("0123456789abcdef")]
+    [InlineData("0123456789ABCDEF0123456789abcdef")]
+    public void ComposeLogEvent_Should_LinkTraceInGrafana_When_TraceIdIsValid(string traceId)
+    {
+        using var scope = Fixture.CreateScope();
+        var composer = new TelegramNotificationComposer(
+            scope.ServiceProvider.GetRequiredService<ITopicRouter>(),
+            Options.Create(new VictoriaLogsOptions
+            {
+                GrafanaLogsUrl = "https://grafana.example/prefix/explore?left=old#fragment",
+                WindowSeconds = 120
+            }));
+        var logEvent = CreateLogEvent(traceId: traceId);
+
+        var notification = composer.ComposeLogEvent(logEvent.Timestamp, logEvent);
+
+        var traceLine = notification.Message.Split('\n').Single(line => line.StartsWith("🔎 trace:", StringComparison.Ordinal));
+        traceLine.ShouldContain($"\">{traceId}</a>");
+        var hrefStart = traceLine.IndexOf("href=\"", StringComparison.Ordinal) + "href=\"".Length;
+        var hrefEnd = traceLine.IndexOf('"', hrefStart);
+        var uri = new Uri(WebUtility.HtmlDecode(traceLine[hrefStart..hrefEnd]));
+        uri.GetLeftPart(UriPartial.Path).ShouldBe("https://grafana.example/prefix/explore");
+        uri.Fragment.ShouldBeEmpty();
+        var parameters = System.Web.HttpUtility.ParseQueryString(uri.Query);
+        parameters["schemaVersion"].ShouldBe("1");
+        parameters["left"].ShouldBeNull();
+        using var document = JsonDocument.Parse(parameters["panes"].ShouldNotBeNull());
+        var pane = document.RootElement.GetProperty("trace");
+        pane.GetProperty("datasource").GetString().ShouldBe("victoriatraces");
+        var query = pane.GetProperty("queries")[0];
+        query.GetProperty("datasource").GetProperty("type").GetString().ShouldBe("jaeger");
+        query.GetProperty("datasource").GetProperty("uid").GetString().ShouldBe("victoriatraces");
+        query.GetProperty("query").GetString().ShouldBe(traceId);
+        query.TryGetProperty("queryType", out _).ShouldBeFalse();
+        pane.GetProperty("range").GetProperty("from").GetString()
+            .ShouldBe(logEvent.Timestamp.ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture));
+        pane.GetProperty("range").GetProperty("to").GetString()
+            .ShouldBe(logEvent.Timestamp.AddMinutes(2).ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture));
+        notification.Message.ShouldContain("Logs for this source and window");
+        notification.Message.Length.ShouldBeLessThanOrEqualTo(NotificationMessage.MaxLength);
+    }
+
+    [Theory(DisplayName = "Compose log event should keep trace as text when safe trace link cannot be built")]
+    [InlineData("https://grafana.example/explore", "invalid<&>trace")]
+    [InlineData("https://grafana.example/explore", "0123456789abcde")]
+    [InlineData("", "0123456789abcdef")]
+    [InlineData("/explore", "0123456789abcdef")]
+    [InlineData("file:///tmp/explore", "0123456789abcdef")]
+    public void ComposeLogEvent_Should_KeepTraceAsText_When_SafeTraceLinkCannotBeBuilt(string grafanaUrl, string traceId)
+    {
+        using var scope = Fixture.CreateScope();
+        var composer = new TelegramNotificationComposer(
+            scope.ServiceProvider.GetRequiredService<ITopicRouter>(),
+            Options.Create(new VictoriaLogsOptions { GrafanaLogsUrl = grafanaUrl }));
+        var logEvent = CreateLogEvent(traceId: traceId);
+
+        var notification = composer.ComposeLogEvent(logEvent.Timestamp, logEvent);
+
+        var traceLine = notification.Message.Split('\n').Single(line => line.StartsWith("🔎 trace:", StringComparison.Ordinal));
+        traceLine.ShouldNotContain("<a ");
+        WebUtility.HtmlDecode(traceLine).ShouldContain($"<code>{traceId}</code>");
+        notification.Message.Length.ShouldBeLessThanOrEqualTo(NotificationMessage.MaxLength);
+    }
+
+    [Fact(DisplayName = "Compose log event should keep trace ID and omitted field count when links exceed message limit")]
+    public void ComposeLogEvent_Should_KeepTraceIdAndOmittedFieldCount_When_LinksExceedMessageLimit()
+    {
+        using var scope = Fixture.CreateScope();
+        var composer = new TelegramNotificationComposer(
+            scope.ServiceProvider.GetRequiredService<ITopicRouter>(),
+            Options.Create(new VictoriaLogsOptions { GrafanaLogsUrl = "https://grafana.example/" + new string('a', 5000) }));
+        var logEvent = CreateLogEvent(traceId: "0123456789abcdef", fields: new Dictionary<string, string> { ["Detail"] = "Value" });
+
+        var notification = composer.ComposeLogEvent(logEvent.Timestamp, logEvent);
+
+        notification.Message.ShouldContain("<code>0123456789abcdef</code>");
+        notification.Message.ShouldNotContain("<a ");
+        notification.Message.ShouldNotContain("fields:");
+        WebUtility.HtmlDecode(notification.Message).ShouldContain("… (1 fields omitted)");
+        notification.Message.Length.ShouldBeLessThanOrEqualTo(NotificationMessage.MaxLength);
     }
 
     [Fact(DisplayName = "Compose log event should create new key for next window when same error repeats")]
@@ -889,5 +1000,23 @@ public sealed class TelegramNotificationComposerTests(IntegrationTestFixture fix
             null,
             string.Empty,
             fingerprint);
+    }
+
+    private static LogEvent CreateLogEvent(string? traceId = null, IReadOnlyDictionary<string, string>? fields = null)
+    {
+        return new LogEvent(
+            Timestamp: new DateTimeOffset(2026, 10, 2, 17, 0, 0, TimeSpan.Zero),
+            Service: "test-service",
+            Namespace: "tests",
+            Container: "demo",
+            Owner: "tests",
+            Severity: "error",
+            Message: "Test failure",
+            ExceptionType: null,
+            StackTrace: null,
+            TraceId: traceId,
+            Fields: fields ?? new Dictionary<string, string>(),
+            Fingerprint: "fields-trace-test",
+            Occurrences: 1);
     }
 }

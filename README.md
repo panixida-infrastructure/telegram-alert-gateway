@@ -21,6 +21,8 @@ and sends messages through `Telegram.Bot`.
   are redacted before Telegram rendering. Optional sections are reduced before the
   message can exceed Telegram's delivery limit.
 - The copyable log block contains `message`, then `exceptions`, then `fields`.
+  Truncated fields report the exact omitted count, including when the entire fields
+  block is removed. Exception metadata rendered separately is excluded from that count.
   Explicit `exception.hresult` (a signed 32-bit decimal integer) and
   `exception.source` fields are rendered as optional `HResult` and `Source` in
   `exceptions`, without duplication in `fields`. Invalid HRESULT values stay in
@@ -36,6 +38,10 @@ and sends messages through `Telegram.Bot`.
   trees keep the first four and the last entry, with an explicit omitted count.
   Parsing is bounded to 128K UTF-16 code units, 64 entries and depth 32; inputs beyond these limits
   use the original-text fallback. No nested causes are inferred from plain errors.
+- Valid 16- or 32-digit hexadecimal trace IDs link to the `victoriatraces` Jaeger
+  datasource in Grafana Explore, using the configured Grafana Logs URL and log window.
+  Missing/invalid Grafana configuration or trace IDs retain the plain trace ID.
+  If the final message budget requires dropping links, the trace ID remains as text.
 - An idempotency key and a PostgreSQL unique constraint suppress webhook retries and
   repeated processing of the same log window.
 - Telegram traffic prefers the WireGuard-backed `telegram-vpn` HTTP proxy and falls
