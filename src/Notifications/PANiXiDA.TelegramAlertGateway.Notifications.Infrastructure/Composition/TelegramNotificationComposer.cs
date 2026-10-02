@@ -29,6 +29,7 @@ internal sealed class TelegramNotificationComposer(
     private const string VictoriaTracesDataSourceUid = "victoriatraces";
     private const int MaxAlertBlockLength = 2600;
     private const int MaxLogFieldsLength = 700;
+    private const string LogRecordUidFieldName = "log.record.uid";
     private const int MaxDisplayedExceptions = 5;
     private const int PageContentLimit = 3400;
     private const string ExceptionHResultFieldName = "exception.hresult";
@@ -126,7 +127,7 @@ internal sealed class TelegramNotificationComposer(
             ["alert_owner"] = logEvent.Owner ?? string.Empty
         };
         var topic = topicRouter.Route(dimensions);
-        var logsUrl = BuildGrafanaLogsUrl(windowStartUtc, logEvent.StreamId);
+        var logsUrl = BuildGrafanaLogsUrl(windowStartUtc, logEvent);
         var message = BuildLogMessage(
             windowStartUtc: windowStartUtc,
             logEvent: logEvent,
@@ -166,7 +167,7 @@ internal sealed class TelegramNotificationComposer(
                 logEvent: logEvent,
                 logsUrl: null,
                 messageBudget: 350,
-                fieldsBudget: 0,
+                fieldsBudget: GetValue(logEvent.Fields, LogRecordUidFieldName) is not null ? 250 : 0,
                 exceptionMessageBudget: 180,
                 stackTraceBudget: 0);
         }
@@ -272,7 +273,11 @@ internal sealed class TelegramNotificationComposer(
         {
             message.Append(LinkOpeningTag)
                 .Append(Html(logsUrl))
-                .Append("\">Logs for this source and window</a>");
+                .Append("\">")
+                .Append(GetValue(logEvent.Fields, LogRecordUidFieldName) is not null
+                    ? "Open this log"
+                    : "Logs for this source and window")
+                .Append("</a>");
         }
 
         return message.ToString();
@@ -320,14 +325,15 @@ internal sealed class TelegramNotificationComposer(
 
     private string? BuildGrafanaLogsUrl(
         DateTimeOffset windowStartUtc,
-        string? streamId)
+        LogEvent logEvent)
     {
         if (string.IsNullOrWhiteSpace(_victoriaLogsOptions.GrafanaLogsUrl))
         {
             return null;
         }
 
-        if (!IsVictoriaLogsStreamId(streamId)
+        var recordUid = GetValue(logEvent.Fields, LogRecordUidFieldName);
+        if ((recordUid is null && !IsVictoriaLogsStreamId(logEvent.StreamId))
             || !Uri.TryCreate(
                 uriString: _victoriaLogsOptions.GrafanaLogsUrl,
                 uriKind: UriKind.Absolute,
@@ -336,7 +342,9 @@ internal sealed class TelegramNotificationComposer(
             return _victoriaLogsOptions.GrafanaLogsUrl;
         }
 
-        var query = $"_stream_id:{streamId}";
+        var query = recordUid is not null
+            ? $"{LogRecordUidFieldName}:={JsonSerializer.Serialize(recordUid)}"
+            : $"_stream_id:{logEvent.StreamId}";
         return BuildGrafanaExploreUrl(
             windowStartUtc: windowStartUtc,
             configuredUri: configuredUri,
@@ -431,7 +439,8 @@ internal sealed class TelegramNotificationComposer(
     private static string FormatFields(IReadOnlyDictionary<string, string> fields, int maxEncodedLength)
     {
         var orderedFields = fields
-            .OrderBy(item => item.Key, StringComparer.OrdinalIgnoreCase)
+            .OrderByDescending(item => string.Equals(item.Key, LogRecordUidFieldName, StringComparison.OrdinalIgnoreCase))
+            .ThenBy(item => item.Key, StringComparer.OrdinalIgnoreCase)
             .ToDictionary(item => item.Key, item => item.Value.Trim());
         var formattedFields = SerializeFields(orderedFields);
         if (Html(formattedFields).Length <= maxEncodedLength)

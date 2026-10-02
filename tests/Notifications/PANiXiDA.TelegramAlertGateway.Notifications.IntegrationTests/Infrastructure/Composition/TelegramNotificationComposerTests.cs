@@ -1002,6 +1002,78 @@ public sealed class TelegramNotificationComposerTests(IntegrationTestFixture fix
             fingerprint);
     }
 
+    [Theory(DisplayName = "Compose log event should link the exact record when log record uid is present")]
+    [InlineData("550e8400-e29b-41d4-a716-446655440000", null)]
+    [InlineData("550e8400-e29b-41d4-a716-446655440000", "0000007b000001c850d9950ea6196b1a4812081265faa1c7")]
+    [InlineData("record\" OR * \\ \n <value>", null)]
+    public void ComposeLogEvent_Should_LinkExactRecord_When_LogRecordUidIsPresent(string recordUid, string? streamId)
+    {
+        using var scope = Fixture.CreateScope();
+        var composer = new TelegramNotificationComposer(
+            scope.ServiceProvider.GetRequiredService<ITopicRouter>(),
+            Options.Create(new VictoriaLogsOptions
+            {
+                GrafanaLogsUrl = "https://grafana.example/prefix/explore?left=old#fragment",
+                WindowSeconds = 60
+            }));
+        var logEvent = CreateLogEvent(fields: new Dictionary<string, string> { ["log.record.uid"] = recordUid })
+            with
+        {
+            StreamId = streamId,
+            Occurrences = 3
+        };
+
+        var notification = composer.ComposeLogEvent(logEvent.Timestamp, logEvent);
+
+        var decoded = WebUtility.HtmlDecode(notification.Message);
+        decoded.ShouldContain("\"log.record.uid\":");
+        decoded.ShouldContain("Open this log</a>");
+        decoded.ShouldContain("At least <b>3 matching events</b>");
+        decoded.ShouldNotContain("Logs for this source and window");
+        var hrefStart = decoded.IndexOf("href=\"", StringComparison.Ordinal) + "href=\"".Length;
+        var hrefEnd = decoded.IndexOf('"', hrefStart);
+        var uri = new Uri(decoded[hrefStart..hrefEnd]);
+        uri.GetLeftPart(UriPartial.Path).ShouldBe("https://grafana.example/prefix/explore");
+        uri.Fragment.ShouldBeEmpty();
+        var parameters = System.Web.HttpUtility.ParseQueryString(uri.Query);
+        using var panes = JsonDocument.Parse(parameters["panes"].ShouldNotBeNull());
+        var pane = panes.RootElement.GetProperty("logs");
+        var query = pane.GetProperty("queries")[0];
+        query.GetProperty("expr").GetString().ShouldBe($"log.record.uid:={JsonSerializer.Serialize(recordUid)}");
+        query.GetProperty("query").GetString().ShouldBe(query.GetProperty("expr").GetString());
+        pane.GetProperty("range").GetProperty("from").GetString()
+            .ShouldBe(logEvent.Timestamp.ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture));
+        pane.GetProperty("range").GetProperty("to").GetString()
+            .ShouldBe(logEvent.Timestamp.AddMinutes(1).ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture));
+        notification.Message.Length.ShouldBeLessThanOrEqualTo(NotificationMessage.MaxLength);
+    }
+
+    [Theory(DisplayName = "Compose log event should preserve the record UID when fields or links exceed message budget")]
+    [InlineData(0)]
+    [InlineData(5000)]
+    public void ComposeLogEvent_Should_PreserveRecordUid_When_FieldsOrLinksExceedMessageBudget(int logsUrlPadding)
+    {
+        using var scope = Fixture.CreateScope();
+        var composer = new TelegramNotificationComposer(
+            scope.ServiceProvider.GetRequiredService<ITopicRouter>(),
+            Options.Create(new VictoriaLogsOptions { GrafanaLogsUrl = "https://grafana.example/" + new string('a', logsUrlPadding) }));
+        const string recordUid = "550e8400-e29b-41d4-a716-446655440000";
+        var fields = Enumerable.Range(1, 12).ToDictionary(index => $"Detail{index:D2}", _ => new string('x', 1000));
+        fields["log.record.uid"] = recordUid;
+        var logEvent = CreateLogEvent(fields: fields);
+
+        var notification = composer.ComposeLogEvent(logEvent.Timestamp, logEvent);
+
+        var decoded = WebUtility.HtmlDecode(notification.Message).ReplaceLineEndings("\n");
+        decoded.ShouldContain($"\"log.record.uid\": \"{recordUid}\"");
+        decoded.ShouldContain("… (12 fields omitted)");
+        notification.Message.Length.ShouldBeLessThanOrEqualTo(NotificationMessage.MaxLength);
+        var start = decoded.IndexOf("fields:\n", StringComparison.Ordinal) + "fields:\n".Length;
+        var end = decoded.IndexOf("\n… (", start, StringComparison.Ordinal);
+        using var json = JsonDocument.Parse(decoded[start..end]);
+        json.RootElement.GetProperty("log.record.uid").GetString().ShouldBe(recordUid);
+    }
+
     private static LogEvent CreateLogEvent(string? traceId = null, IReadOnlyDictionary<string, string>? fields = null)
     {
         return new LogEvent(
