@@ -1002,7 +1002,7 @@ public sealed class TelegramNotificationComposerTests(IntegrationTestFixture fix
             fingerprint);
     }
 
-    [Theory(DisplayName = "Compose log event should link the exact record when a log record UID is present")]
+    [Theory(DisplayName = "Compose log event should link the exact record when log record uid is present")]
     [InlineData("550e8400-e29b-41d4-a716-446655440000", null)]
     [InlineData("550e8400-e29b-41d4-a716-446655440000", "0000007b000001c850d9950ea6196b1a4812081265faa1c7")]
     [InlineData("record\" OR * \\ \n <value>", null)]
@@ -1048,7 +1048,7 @@ public sealed class TelegramNotificationComposerTests(IntegrationTestFixture fix
         notification.Message.Length.ShouldBeLessThanOrEqualTo(NotificationMessage.MaxLength);
     }
 
-    [Theory(DisplayName = "Compose log event should preserve the record UID when fields or links exceed the message budget")]
+    [Theory(DisplayName = "Compose log event should preserve the record UID when fields or links exceed message budget")]
     [InlineData(0)]
     [InlineData(5000)]
     public void ComposeLogEvent_Should_PreserveRecordUid_When_FieldsOrLinksExceedMessageBudget(int logsUrlPadding)

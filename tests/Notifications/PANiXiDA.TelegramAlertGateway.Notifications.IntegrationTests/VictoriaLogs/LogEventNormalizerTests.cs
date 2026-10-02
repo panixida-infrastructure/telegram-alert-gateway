@@ -9,7 +9,7 @@ namespace PANiXiDA.TelegramAlertGateway.Notifications.IntegrationTests.VictoriaL
 public sealed class LogEventNormalizerTests(IntegrationTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
-    [Fact(DisplayName = "Normalize should preserve the representative record UID when repeated errors have distinct IDs")]
+    [Fact(DisplayName = "Normalize should preserve the representative record UID when repeated errors have distinct ids")]
     public void Normalize_Should_PreserveRepresentativeRecordUid_When_RepeatedErrorsHaveDistinctIds()
     {
         using var scope = Fixture.CreateScope();
