@@ -10,6 +10,7 @@ using PANiXiDA.TelegramAlertGateway.Notifications.Application.Notifications.Mode
 using PANiXiDA.TelegramAlertGateway.Notifications.Domain.Notifications.ValueObjects;
 using PANiXiDA.TelegramAlertGateway.Notifications.Infrastructure.Configuration.Options.VictoriaLogs;
 using PANiXiDA.TelegramAlertGateway.Notifications.Infrastructure.Routing;
+using PANiXiDA.TelegramAlertGateway.Notifications.Infrastructure.VictoriaLogs;
 
 namespace PANiXiDA.TelegramAlertGateway.Notifications.Infrastructure.Composition;
 
@@ -263,24 +264,35 @@ internal sealed class TelegramNotificationComposer(
         }
 
         message.AppendLine(PreformattedTextClosingTag);
-        AppendTrace(
-            message: message,
-            windowStartUtc: windowStartUtc,
-            traceId: logEvent.TraceId,
-            includeLink: logsUrl is not null);
-
         if (!string.IsNullOrWhiteSpace(logsUrl))
         {
             message.Append(LinkOpeningTag)
                 .Append(Html(logsUrl))
                 .Append("\">")
-                .Append(GetValue(logEvent.Fields, LogRecordUidFieldName) is not null
-                    ? "Open this log"
-                    : "Logs for this source and window")
-                .Append("</a>");
+                .Append(GetLogLinkLabel(logEvent))
+                .AppendLine("</a>");
+        }
+
+        if (logEvent.Occurrences <= 1)
+        {
+            AppendTrace(
+                message: message,
+                windowStartUtc: windowStartUtc,
+                traceId: logEvent.TraceId,
+                includeLink: logsUrl is not null);
         }
 
         return message.ToString();
+    }
+
+    private static string GetLogLinkLabel(LogEvent logEvent)
+    {
+        if (logEvent.Occurrences > 1)
+        {
+            return logEvent.RecordUids is { Count: > 0 } ? "Logs" : "Logs for this source and window";
+        }
+
+        return GetValue(logEvent.Fields, LogRecordUidFieldName) is not null ? "Log" : "Logs for this source and window";
     }
 
     private void AppendTrace(
@@ -295,15 +307,14 @@ internal sealed class TelegramNotificationComposer(
         }
 
         var traceUrl = includeLink ? BuildGrafanaTraceUrl(windowStartUtc, traceId) : null;
-        message.Append("🔎 trace: ");
+        message.Append("🔎 ");
         if (traceUrl is null)
         {
-            message.Append("<code>").Append(HtmlTruncate(traceId, 180)).AppendLine("</code>");
+            message.Append("Trace: <code>").Append(HtmlTruncate(traceId, 180)).AppendLine("</code>");
             return;
         }
 
-        message.Append("<a href=\"").Append(Html(traceUrl)).Append("\">")
-            .Append(Html(traceId)).AppendLine("</a>");
+        message.Append("<a href=\"").Append(Html(traceUrl)).AppendLine("\">Trace</a>");
     }
 
     private static int GetPreferredMessageBudget(LogEvent logEvent)
@@ -332,8 +343,9 @@ internal sealed class TelegramNotificationComposer(
             return null;
         }
 
-        var recordUid = GetValue(logEvent.Fields, LogRecordUidFieldName);
-        if ((recordUid is null && !IsVictoriaLogsStreamId(logEvent.StreamId))
+        var groupQuery = LogGroupQuery.Create(windowStartUtc, logEvent);
+        var recordUid = logEvent.Occurrences <= 1 ? GetValue(logEvent.Fields, LogRecordUidFieldName) : null;
+        if ((groupQuery is null && recordUid is null && !IsVictoriaLogsStreamId(logEvent.StreamId))
             || !Uri.TryCreate(
                 uriString: _victoriaLogsOptions.GrafanaLogsUrl,
                 uriKind: UriKind.Absolute,
@@ -342,9 +354,9 @@ internal sealed class TelegramNotificationComposer(
             return _victoriaLogsOptions.GrafanaLogsUrl;
         }
 
-        var query = recordUid is not null
+        var query = groupQuery?.Query ?? (recordUid is not null
             ? $"{LogRecordUidFieldName}:={JsonSerializer.Serialize(recordUid)}"
-            : $"_stream_id:{logEvent.StreamId}";
+            : $"_stream_id:{logEvent.StreamId}");
         return BuildGrafanaExploreUrl(
             windowStartUtc: windowStartUtc,
             configuredUri: configuredUri,

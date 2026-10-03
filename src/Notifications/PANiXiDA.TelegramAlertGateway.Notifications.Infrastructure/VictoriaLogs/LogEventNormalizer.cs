@@ -103,7 +103,16 @@ public sealed partial class LogEventNormalizer(
                     .ThenByDescending(item => item.Message.Length)
                     .First();
 
-                return preferred with { Occurrences = sourceGroup.Count() };
+                var recordUids = sourceGroup
+                    .Select(item => GetValue(item.Fields, "log.record.uid"))
+                    .ToArray();
+                return preferred with
+                {
+                    Occurrences = sourceGroup.Count(),
+                    RecordUids = recordUids.All(id => id is not null)
+                        ? recordUids.Select(id => id!).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray()
+                        : null
+                };
             })
             .OrderBy(item => item.Service, StringComparer.Ordinal)
             .ThenBy(item => item.Fingerprint, StringComparer.Ordinal)

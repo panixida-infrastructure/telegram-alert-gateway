@@ -84,6 +84,14 @@ internal sealed class LogPollingWorker(
         var events = normalizer.Normalize(records);
         if (events.Count > 0)
         {
+            foreach (var logEvent in events)
+            {
+                await client.StoreLogGroupAsync(
+                    windowStartUtc: windowStart,
+                    logEvent: logEvent,
+                    cancellationToken: cancellationToken);
+            }
+
             var mediator = scope.ServiceProvider.GetRequiredService<IMediator>();
             var result = await mediator.SendAsync(
                 command: new QueueLogEventsCommand(

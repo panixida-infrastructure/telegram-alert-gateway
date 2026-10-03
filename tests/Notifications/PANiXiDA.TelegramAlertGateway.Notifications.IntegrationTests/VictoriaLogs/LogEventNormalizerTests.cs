@@ -28,6 +28,7 @@ public sealed class LogEventNormalizerTests(IntegrationTestFixture fixture)
         logEvent.Occurrences.ShouldBe(2);
         var representative = records.Single(record => DateTimeOffset.Parse(record["_time"]) == logEvent.Timestamp);
         logEvent.Fields["log.record.uid"].ShouldBe(representative["log.record.uid"]);
+        logEvent.RecordUids.ShouldNotBeNull().ShouldBe(records.Select(record => record["log.record.uid"]));
     }
 
     [Fact(DisplayName = "Normalize should deduplicate direct and container copies of one error when ingestion paths differ")]
@@ -79,6 +80,24 @@ public sealed class LogEventNormalizerTests(IntegrationTestFixture fixture)
         var logEvent = normalizer.Normalize(records).ShouldHaveSingleItem();
 
         logEvent.Occurrences.ShouldBe(2);
+        logEvent.RecordUids.ShouldNotBeNull().ShouldBe(records
+            .Where(record => record["service.name"] == "tactical-heroes-api-production")
+            .Select(record => record["log.record.uid"]));
+    }
+
+    [Fact(DisplayName = "Normalize should omit group ids when any counted record lacks an id")]
+    public void Normalize_Should_OmitGroupIds_When_AnyCountedRecordLacksAnId()
+    {
+        using var scope = Fixture.CreateScope();
+        var normalizer = scope.ServiceProvider.GetRequiredService<LogEventNormalizer>();
+        var first = CreateRecord("2026-08-30T10:00:05Z", "Repeated failure", "direct");
+        var second = CreateRecord("2026-08-30T10:00:15Z", "Repeated failure", "direct");
+        second.Remove("log.record.uid");
+
+        var logEvent = normalizer.Normalize([first, second]).ShouldHaveSingleItem();
+
+        logEvent.Occurrences.ShouldBe(2);
+        logEvent.RecordUids.ShouldBeNull();
     }
 
     [Fact(DisplayName = "Normalize should ignore informational error words when severity is informational")]
@@ -277,6 +296,7 @@ public sealed class LogEventNormalizerTests(IntegrationTestFixture fixture)
                 ["_msg"] = message,
                 ["severity_text"] = "Error",
                 ["service.name"] = "tactical-heroes-api-production",
+                ["log.record.uid"] = $"direct-{timestamp}",
                 ["trace_id"] = $"trace-{timestamp}"
             }
             : new Dictionary<string, string>
@@ -285,6 +305,7 @@ public sealed class LogEventNormalizerTests(IntegrationTestFixture fixture)
                 ["_msg"] = message,
                 ["LogLevel"] = "Error",
                 ["service.name"] = "api",
+                ["log.record.uid"] = $"container-{timestamp}",
                 ["k8s.namespace.name"] = "tactical-heroes-production",
                 ["k8s.container.name"] = "api"
             };
