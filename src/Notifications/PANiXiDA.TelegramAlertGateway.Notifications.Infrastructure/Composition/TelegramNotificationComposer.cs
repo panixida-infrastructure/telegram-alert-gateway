@@ -381,7 +381,7 @@ internal sealed class TelegramNotificationComposer(
         return $"{seconds}-second";
     }
 
-    private static string? FormatFields(IReadOnlyDictionary<string, string> fields, int budget)
+    private static string? FormatFields(Dictionary<string, string> fields, int budget)
     {
         if (fields.Count == 0)
         {
@@ -674,7 +674,7 @@ internal sealed class TelegramNotificationComposer(
                && (uri.Scheme == Uri.UriSchemeHttps || uri.Scheme == Uri.UriSchemeHttp);
     }
 
-    private List<string> BuildMetricPages(string status, string externalUrl, IReadOnlyList<AlertmanagerAlert> alerts)
+    private List<string> BuildMetricPages(string status, string externalUrl, AlertmanagerAlert[] alerts)
     {
         var resolved = alerts.Count(alert => string.Equals(alert.Status, ResolvedStatus, StringComparison.OrdinalIgnoreCase));
         string Header(int index, int count)
@@ -682,11 +682,11 @@ internal sealed class TelegramNotificationComposer(
             var title = string.Equals(status, ResolvedStatus, StringComparison.OrdinalIgnoreCase)
                 ? "✅ <b>Alerts resolved</b>" : "🔥 <b>Alerts firing</b>";
             var page = count > 1 ? $" · page {index + 1}/{count}" : string.Empty;
-            return $"{title}{Environment.NewLine}📊 Firing: <b>{alerts.Count - resolved}</b> | Resolved: <b>{resolved}</b>{page}{Environment.NewLine}{Environment.NewLine}";
+            return $"{title}{Environment.NewLine}📊 Firing: <b>{alerts.Length - resolved}</b> | Resolved: <b>{resolved}</b>{page}{Environment.NewLine}{Environment.NewLine}";
         }
         string Page(string content, int index, int count) => Header(index, count) + content + BuildAlertmanagerLink(externalUrl, content);
 
-        var expectedCount = alerts.Count;
+        var expectedCount = alerts.Length;
         while (true)
         {
             var pages = PaginateMetricAlerts(alerts: alerts,
