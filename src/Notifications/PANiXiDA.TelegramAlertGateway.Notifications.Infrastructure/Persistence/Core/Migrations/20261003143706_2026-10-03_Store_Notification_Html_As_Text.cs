@@ -1,11 +1,11 @@
-﻿using Microsoft.EntityFrameworkCore.Migrations;
+using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
 namespace PANiXiDA.TelegramAlertGateway.Notifications.Infrastructure.Persistence.Core.Migrations
 {
     /// <inheritdoc />
-    public partial class _20261003_Store_Notification_Html_As_Text : Migration
+    public partial class StoreNotificationHtmlAsText : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)

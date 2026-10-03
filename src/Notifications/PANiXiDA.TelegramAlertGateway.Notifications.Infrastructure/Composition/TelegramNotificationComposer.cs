@@ -114,7 +114,7 @@ internal sealed class TelegramNotificationComposer(
                             && !(source is not null && string.Equals(field.Key, ExceptionSourceFieldName, StringComparison.OrdinalIgnoreCase)))
             .ToDictionary(field => field.Key, field => field.Value);
         var exceptionsText = FormatExceptions(logEvent: logEvent, exceptionMessage: exceptionMessage, hResult: hResult, source: source, budget: int.MaxValue);
-        var fieldsText = fields.Count > 0 ? FormatFields(fields, int.MaxValue) : null;
+        var fieldsText = FormatFields(fields, int.MaxValue);
         var message = RenderLogMessage(header: header, text: logEvent.Message, exceptions: exceptionsText, fields: fieldsText, footer: footer.ToString());
 
         if (NotificationMessage.GetTextLength(message) > NotificationMessage.MaxLength)
@@ -128,21 +128,20 @@ internal sealed class TelegramNotificationComposer(
             var hasDetails = exceptionsText is not null || fieldsText is not null;
             var text = Truncate(logEvent.Message, hasDetails ? available / 2 : available);
             var remaining = available - TextLength(text);
-            var exceptionsLength = exceptionsText is null ? 0 : TextLength(exceptionsText);
-            var fieldsLength = fieldsText is null ? 0 : TextLength(fieldsText);
+            var exceptionsLength = TextLength(exceptionsText);
+            var fieldsLength = TextLength(fieldsText);
             var exceptionBudget = Math.Min(exceptionsLength, (remaining + 1) / 2);
             var fieldsBudget = Math.Min(fieldsLength, remaining - exceptionBudget);
-            fieldsText = fields.Count > 0 ? FormatFields(fields, fieldsBudget) : null;
+            fieldsText = FormatFields(fields, fieldsBudget);
             // A short block or whole-field omission releases its unused share to the other block.
             exceptionsText = FormatExceptions(logEvent: logEvent, exceptionMessage: exceptionMessage, hResult: hResult, source: source,
-                budget: remaining - (fieldsText is null ? 0 : TextLength(fieldsText)));
-            fieldsText = fields.Count > 0
-                ? FormatFields(fields, remaining - (exceptionsText is null ? 0 : TextLength(exceptionsText))) : null;
+                budget: remaining - TextLength(fieldsText));
+            fieldsText = FormatFields(fields, remaining - TextLength(exceptionsText));
             exceptionsText = FormatExceptions(logEvent: logEvent, exceptionMessage: exceptionMessage, hResult: hResult, source: source,
-                budget: remaining - (fieldsText is null ? 0 : TextLength(fieldsText)));
+                budget: remaining - TextLength(fieldsText));
             text = Truncate(logEvent.Message, available
-                - (fieldsText is null ? 0 : TextLength(fieldsText))
-                - (exceptionsText is null ? 0 : TextLength(exceptionsText)));
+                - TextLength(fieldsText)
+                - TextLength(exceptionsText));
             message = RenderLogMessage(header: header, text: text, exceptions: exceptionsText, fields: fieldsText, footer: footer.ToString());
         }
 
@@ -382,8 +381,12 @@ internal sealed class TelegramNotificationComposer(
         return $"{seconds}-second";
     }
 
-    private static string FormatFields(IReadOnlyDictionary<string, string> fields, int budget)
+    private static string? FormatFields(IReadOnlyDictionary<string, string> fields, int budget)
     {
+        if (fields.Count == 0)
+        {
+            return null;
+        }
         var orderedFields = fields
             .OrderByDescending(item => string.Equals(item.Key, LogRecordUidFieldName, StringComparison.OrdinalIgnoreCase))
             .ThenBy(item => item.Key, StringComparer.OrdinalIgnoreCase)
@@ -423,22 +426,9 @@ internal sealed class TelegramNotificationComposer(
         var details = DotNetExceptionParser.Parse(logEvent.StackTrace)
                       ?? [new LogExceptionDetails(Depth: 0, ClassName: logEvent.ExceptionType, Message: exceptionMessage, StackTrace: logEvent.StackTrace)];
 
-        string Render(int count, int valueBudget, int stackBudget)
-        {
-            LogExceptionDetails[] visible = count == 1 ? [details[0]]
-                : details.Count > count ? [.. details.Take(count - 1), details[^1]] : [.. details];
-            var exceptions = visible.Select((detail, index) => FormatException(
-                    detail: index == 0 ? detail with { ClassName = logEvent.ExceptionType ?? detail.ClassName } : detail,
-                    hResult: index == 0 ? hResult : null, source: index == 0 ? source : null,
-                    messageBudget: valueBudget, stackTraceBudget: stackBudget))
-                .Where(exception => exception.Count > 1).ToArray();
-            if (exceptions.Length == 0)
-            {
-                return string.Empty;
-            }
-            var formatted = $"exceptions:{Environment.NewLine}{JsonSerializer.Serialize(exceptions, LogDetailsJsonOptions)}";
-            return details.Count > count ? $"{formatted}{Environment.NewLine}… ({details.Count - count} exceptions omitted)" : formatted;
-        }
+        string Render(int count, int valueBudget, int stackBudget) => RenderExceptions(
+            details: details, exceptionType: logEvent.ExceptionType, hResult: hResult, source: source,
+            count: count, valueBudget: valueBudget, stackBudget: stackBudget);
 
         var full = Render(count: details.Count, valueBudget: int.MaxValue, stackBudget: int.MaxValue);
         if (full.Length == 0)
@@ -463,6 +453,31 @@ internal sealed class TelegramNotificationComposer(
         return TextLength(Render(count: count, valueBudget: int.MaxValue, stackBudget: 0)) <= budget
             ? Fit(limit => Render(count: count, valueBudget: int.MaxValue, stackBudget: limit), budget)
             : Fit(limit => Render(count: count, valueBudget: limit, stackBudget: 0), budget);
+    }
+
+    private static string RenderExceptions(IReadOnlyList<LogExceptionDetails> details, string? exceptionType,
+        int? hResult, string? source, int count, int valueBudget, int stackBudget)
+    {
+        LogExceptionDetails[] visible = [.. details];
+        if (count == 1)
+        {
+            visible = [details[0]];
+        }
+        else if (details.Count > count)
+        {
+            visible = [.. details.Take(count - 1), details[^1]];
+        }
+        var exceptions = visible.Select((detail, index) => FormatException(
+                detail: index == 0 ? detail with { ClassName = exceptionType ?? detail.ClassName } : detail,
+                hResult: index == 0 ? hResult : null, source: index == 0 ? source : null,
+                messageBudget: valueBudget, stackTraceBudget: stackBudget))
+            .Where(exception => exception.Count > 1).ToArray();
+        if (exceptions.Length == 0)
+        {
+            return string.Empty;
+        }
+        var formatted = $"exceptions:{Environment.NewLine}{JsonSerializer.Serialize(exceptions, LogDetailsJsonOptions)}";
+        return details.Count > count ? $"{formatted}{Environment.NewLine}… ({details.Count - count} exceptions omitted)" : formatted;
     }
 
     private static Dictionary<string, object> FormatException(
@@ -674,25 +689,8 @@ internal sealed class TelegramNotificationComposer(
         var expectedCount = alerts.Count;
         while (true)
         {
-            var pages = new List<string>();
-            var current = string.Empty;
-            foreach (var alert in alerts)
-            {
-                var block = BuildMetricAlertBlock(alert, int.MaxValue);
-                var candidate = current.Length == 0 ? block : $"{current}{Environment.NewLine}{Separator}{Environment.NewLine}{Environment.NewLine}{block}";
-                if (current.Length > 0 && NotificationMessage.GetTextLength(Page(content: candidate, index: pages.Count, count: expectedCount)) > NotificationMessage.MaxLength)
-                {
-                    pages.Add(Page(content: current, index: pages.Count, count: expectedCount));
-                    current = string.Empty;
-                }
-                var budget = NotificationMessage.MaxLength - NotificationMessage.GetTextLength(Header(pages.Count, expectedCount) + BuildAlertmanagerLink(externalUrl, block));
-                block = Fit(render: limit => BuildMetricAlertBlock(alert, limit), budget: budget, html: true);
-                current = current.Length == 0 ? block : $"{current}{Environment.NewLine}{Separator}{Environment.NewLine}{Environment.NewLine}{block}";
-            }
-            if (current.Length > 0)
-            {
-                pages.Add(Page(content: current, index: pages.Count, count: expectedCount));
-            }
+            var pages = PaginateMetricAlerts(alerts: alerts,
+                renderPage: (content, index) => Page(content: content, index: index, count: expectedCount));
             if (pages.Count == expectedCount)
             {
                 return pages;
@@ -700,6 +698,33 @@ internal sealed class TelegramNotificationComposer(
             expectedCount = pages.Count;
         }
     }
+
+    private List<string> PaginateMetricAlerts(IReadOnlyList<AlertmanagerAlert> alerts, Func<string, int, string> renderPage)
+    {
+        var pages = new List<string>();
+        var current = string.Empty;
+        foreach (var alert in alerts)
+        {
+            var block = BuildMetricAlertBlock(alert, int.MaxValue);
+            var candidate = AppendMetricBlock(current, block);
+            if (current.Length > 0 && NotificationMessage.GetTextLength(renderPage(candidate, pages.Count)) > NotificationMessage.MaxLength)
+            {
+                pages.Add(renderPage(current, pages.Count));
+                current = string.Empty;
+            }
+            var overhead = NotificationMessage.GetTextLength(renderPage(block, pages.Count)) - NotificationMessage.GetTextLength(block);
+            block = Fit(render: limit => BuildMetricAlertBlock(alert, limit), budget: NotificationMessage.MaxLength - overhead, html: true);
+            current = AppendMetricBlock(current, block);
+        }
+        if (current.Length > 0)
+        {
+            pages.Add(renderPage(current, pages.Count));
+        }
+        return pages;
+    }
+
+    private static string AppendMetricBlock(string current, string block) => current.Length == 0
+        ? block : $"{current}{Environment.NewLine}{Separator}{Environment.NewLine}{Environment.NewLine}{block}";
 
     private static string? GetValue(
         IReadOnlyDictionary<string, string> values,
@@ -721,7 +746,7 @@ internal sealed class TelegramNotificationComposer(
         return HtmlEncoder.Default.Encode(value);
     }
 
-    private static int TextLength(string value) => value.EnumerateRunes().Count();
+    private static int TextLength(string? value) => value?.EnumerateRunes().Count() ?? 0;
 
     private static string Truncate(string value, int budget)
     {
