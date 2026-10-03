@@ -10,6 +10,15 @@ and sends messages through `Telegram.Bot`.
   `POST /api/v1/webhooks/alertmanager` with a bearer token.
 - Metric alerts preserve `firing` and `resolved` states. Large groups are split into
   multiple Telegram messages; alerts are never silently omitted.
+- Each metric alert uses a `Grafana` link from `dashboard_url` (or `logs_url`),
+  preserving the rule's panel, time range and URL-encoded filters. Without these
+  annotations, `MetricAlerts:GrafanaDashboardUrl` supplies the overview; an internal
+  generator URL is not presented as Grafana. URLs are never truncated: invalid
+  links or links over the 1000-character HTML budget are omitted.
+- `MetricAlerts:AlertmanagerUrl` overrides the webhook's internal `externalURL`.
+  Production opens Grafana's active notifications with the external `Alertmanager`
+  datasource selected. An empty setting retains the webhook URL when it is a valid
+  HTTP(S) link within the 350-character HTML footer budget.
 - The gateway polls completed VictoriaLogs windows for error events. Repeated copies
   of one normalized error are combined into one message with an `At least N matching
   events` count and explicit window boundaries. Copies received through multiple

@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.Text;
 using System.Text.Encodings.Web;
@@ -8,6 +9,7 @@ using Microsoft.Extensions.Options;
 using PANiXiDA.TelegramAlertGateway.Notifications.Application.Notifications.Abstractions;
 using PANiXiDA.TelegramAlertGateway.Notifications.Application.Notifications.Models;
 using PANiXiDA.TelegramAlertGateway.Notifications.Domain.Notifications.ValueObjects;
+using PANiXiDA.TelegramAlertGateway.Notifications.Infrastructure.Configuration.Options.MetricAlerts;
 using PANiXiDA.TelegramAlertGateway.Notifications.Infrastructure.Configuration.Options.VictoriaLogs;
 using PANiXiDA.TelegramAlertGateway.Notifications.Infrastructure.Routing;
 using PANiXiDA.TelegramAlertGateway.Notifications.Infrastructure.VictoriaLogs;
@@ -15,6 +17,7 @@ using PANiXiDA.TelegramAlertGateway.Notifications.Infrastructure.VictoriaLogs;
 namespace PANiXiDA.TelegramAlertGateway.Notifications.Infrastructure.Composition;
 
 internal sealed class TelegramNotificationComposer(
+    IOptions<MetricAlertsOptions> metricAlertsOptions,
     ITopicRouter topicRouter,
     IOptions<VictoriaLogsOptions> victoriaLogsOptions)
     : INotificationComposer
@@ -29,6 +32,7 @@ internal sealed class TelegramNotificationComposer(
     private const string VictoriaTracesDataSourceType = "jaeger";
     private const string VictoriaTracesDataSourceUid = "victoriatraces";
     private const int MaxAlertBlockLength = 2600;
+    private const int MaxMetricLinkLength = 1000;
     private const int MaxLogFieldsLength = 700;
     private const string LogRecordUidFieldName = "log.record.uid";
     private const int MaxDisplayedExceptions = 5;
@@ -43,6 +47,7 @@ internal sealed class TelegramNotificationComposer(
         Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
     };
 
+    private readonly MetricAlertsOptions _metricAlertsOptions = metricAlertsOptions.Value;
     private readonly VictoriaLogsOptions _victoriaLogsOptions = victoriaLogsOptions.Value;
 
     public IReadOnlyList<ComposedNotification> ComposeMetricAlerts(
@@ -51,6 +56,7 @@ internal sealed class TelegramNotificationComposer(
         IReadOnlyList<AlertmanagerAlert> alerts,
         DateTimeOffset receivedAtUtc)
     {
+        var alertmanagerLink = BuildAlertmanagerLink(externalUrl);
         var result = new List<ComposedNotification>();
         var deliveryWindow = receivedAtUtc.UtcTicks / MetricDeliveryDeduplicationWindow.Ticks;
 
@@ -85,15 +91,8 @@ internal sealed class TelegramNotificationComposer(
                     .Append(" alert(s)</b>")
                     .AppendLine(pageLabel)
                     .AppendLine()
-                    .Append(pages[index]);
-
-                if (!string.IsNullOrWhiteSpace(externalUrl))
-                {
-                    body.AppendLine()
-                        .Append(LinkOpeningTag)
-                        .Append(Html(externalUrl))
-                        .Append("\">Alertmanager</a>");
-                }
+                    .Append(pages[index])
+                    .Append(alertmanagerLink);
 
                 var alertOccurrences = string.Join(
                     ',',
@@ -609,7 +608,17 @@ internal sealed class TelegramNotificationComposer(
             : length;
     }
 
-    private static string BuildMetricAlertBlock(AlertmanagerAlert alert)
+    private string BuildAlertmanagerLink(string externalUrl)
+    {
+        var url = string.IsNullOrWhiteSpace(_metricAlertsOptions.AlertmanagerUrl)
+            ? externalUrl
+            : _metricAlertsOptions.AlertmanagerUrl;
+        return IsHttpUrl(url) && Html(url).Length <= 350
+            ? $"{Environment.NewLine}{LinkOpeningTag}{Html(url)}\">Alertmanager</a>"
+            : string.Empty;
+    }
+
+    private string BuildMetricAlertBlock(AlertmanagerAlert alert)
     {
         var isResolved = string.Equals(alert.Status, ResolvedStatus, StringComparison.OrdinalIgnoreCase);
         var alertName = GetValue(alert.Labels, "alertname") ?? "unnamed-alert";
@@ -620,31 +629,31 @@ internal sealed class TelegramNotificationComposer(
         var summary = GetValue(alert.Annotations, "summary") ?? "No summary provided.";
         var description = GetValue(alert.Annotations, "description");
         var dashboardUrl = GetValue(alert.Annotations, "dashboard_url", "logs_url")
-            ?? alert.GeneratorUrl;
+            ?? _metricAlertsOptions.GrafanaDashboardUrl;
 
         var builder = new StringBuilder()
             .Append(isResolved ? "✅ " : "🔥 ")
             .Append("<b>")
-            .Append(Html(Truncate(alertName, 180)))
+            .Append(HtmlTruncate(alertName, 180))
             .Append("</b> · ")
-            .AppendLine(Html(Truncate(severity.ToUpperInvariant(), 40)))
+            .AppendLine(HtmlTruncate(severity.ToUpperInvariant(), 40))
             .Append("📦 ")
-            .AppendLine(Html(Truncate(owner, 180)))
+            .AppendLine(HtmlTruncate(owner, 180))
             .Append("📝 ")
-            .AppendLine(Html(Truncate(summary, 600)));
+            .AppendLine(HtmlTruncate(summary, 600));
 
         if (!string.IsNullOrWhiteSpace(description))
         {
             builder.Append(PreformattedTextOpeningTag)
-                .Append(Html(Truncate(description, 850)))
+                .Append(HtmlTruncate(description, 850))
                 .AppendLine(PreformattedTextClosingTag);
         }
 
-        if (!string.IsNullOrWhiteSpace(dashboardUrl))
+        if (IsHttpUrl(dashboardUrl) && Html(dashboardUrl).Length <= MaxMetricLinkLength)
         {
             builder.Append(LinkOpeningTag)
-                .Append(Html(Truncate(dashboardUrl, 500)))
-                .AppendLine("\">Open details</a>");
+                .Append(Html(dashboardUrl))
+                .AppendLine("\">Grafana</a>");
         }
 
         var block = builder.ToString();
@@ -670,26 +679,32 @@ internal sealed class TelegramNotificationComposer(
         var builder = new StringBuilder()
             .Append(isResolved ? "✅ " : "🔥 ")
             .Append("<b>")
-            .Append(Html(Truncate(alertName, 180)))
+            .Append(HtmlTruncate(alertName, 180))
             .Append("</b> · ")
-            .AppendLine(Html(Truncate(severity.ToUpperInvariant(), 40)))
+            .AppendLine(HtmlTruncate(severity.ToUpperInvariant(), 40))
             .Append("📦 ")
-            .AppendLine(Html(Truncate(owner, 180)))
+            .AppendLine(HtmlTruncate(owner, 180))
             .Append("📝 ")
-            .AppendLine(Html(Truncate(summary, 600)))
+            .AppendLine(HtmlTruncate(summary, 600))
             .AppendLine("<i>Description omitted because the alert is too long.</i>");
 
-        if (!string.IsNullOrWhiteSpace(dashboardUrl))
+        if (IsHttpUrl(dashboardUrl) && Html(dashboardUrl).Length <= MaxMetricLinkLength)
         {
             builder.Append(LinkOpeningTag)
-                .Append(Html(Truncate(dashboardUrl, 500)))
-                .AppendLine("\">Open details</a>");
+                .Append(Html(dashboardUrl))
+                .AppendLine("\">Grafana</a>");
         }
 
         return builder.ToString();
     }
 
-    private static IReadOnlyList<string> Paginate(IReadOnlyList<string> blocks)
+    private static bool IsHttpUrl([NotNullWhen(true)] string? value)
+    {
+        return Uri.TryCreate(uriString: value, uriKind: UriKind.Absolute, result: out var uri)
+               && (uri.Scheme == Uri.UriSchemeHttps || uri.Scheme == Uri.UriSchemeHttp);
+    }
+
+    private static List<string> Paginate(IReadOnlyList<string> blocks)
     {
         var pages = new List<string>();
         var current = new StringBuilder();
@@ -768,16 +783,6 @@ internal sealed class TelegramNotificationComposer(
         }
 
         return string.Concat(Html(value[..minimum]), "…");
-    }
-
-    private static string Truncate(string value, int maxLength)
-    {
-        if (value.Length <= maxLength)
-        {
-            return value;
-        }
-
-        return string.Concat(value.AsSpan(0, maxLength - 1), "…");
     }
 
 }

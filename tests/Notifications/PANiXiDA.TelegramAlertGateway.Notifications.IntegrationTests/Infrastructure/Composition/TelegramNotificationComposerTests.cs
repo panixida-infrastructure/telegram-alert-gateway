@@ -9,6 +9,7 @@ using PANiXiDA.TelegramAlertGateway.Notifications.Application.Notifications.Abst
 using PANiXiDA.TelegramAlertGateway.Notifications.Application.Notifications.Models;
 using PANiXiDA.TelegramAlertGateway.Notifications.Domain.Notifications.ValueObjects;
 using PANiXiDA.TelegramAlertGateway.Notifications.Infrastructure.Composition;
+using PANiXiDA.TelegramAlertGateway.Notifications.Infrastructure.Configuration.Options.MetricAlerts;
 using PANiXiDA.TelegramAlertGateway.Notifications.Infrastructure.Configuration.Options.VictoriaLogs;
 using PANiXiDA.TelegramAlertGateway.Notifications.Infrastructure.Routing;
 using PANiXiDA.TelegramAlertGateway.Notifications.Infrastructure.VictoriaLogs;
@@ -18,6 +19,132 @@ namespace PANiXiDA.TelegramAlertGateway.Notifications.IntegrationTests.Infrastru
 public sealed class TelegramNotificationComposerTests(IntegrationTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
+    [Theory(DisplayName = "Compose metric alerts should preserve contextual links when public urls are configured")]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ComposeMetricAlerts_Should_PreserveContextualLinks_When_PublicUrlsAreConfigured(bool longDescription)
+    {
+        using var scope = Fixture.CreateScope();
+        const string alertmanagerUrl = "https://grafana.example/alerting/groups?alertmanager=Alertmanager";
+        var composer = new TelegramNotificationComposer(
+            Options.Create(new MetricAlertsOptions { AlertmanagerUrl = alertmanagerUrl }),
+            scope.ServiceProvider.GetRequiredService<ITopicRouter>(),
+            Options.Create(new VictoriaLogsOptions()));
+        var dashboardUrl = "https://grafana.example/d/application-telemetry/application-telemetry"
+                           + "?orgId=1&from=1790990000000&to=now&var-service="
+                           + Uri.EscapeDataString("api <&>/" + new string('x', 640))
+                           + "&viewPanel=panel-15";
+        var alert = CreateAlert("tests", "links") with
+        {
+            Annotations = new Dictionary<string, string>
+            {
+                ["summary"] = longDescription ? new string('s', 600) : "Slow route",
+                ["description"] = new string('d', longDescription ? 900 : 10),
+                ["dashboard_url"] = dashboardUrl
+            }
+        };
+        if (longDescription)
+        {
+            alert = alert with
+            {
+                Labels = new Dictionary<string, string>(alert.Labels)
+                {
+                    ["alertname"] = new string('a', 180),
+                    ["service_name"] = new string('s', 180),
+                    ["severity"] = new string('w', 40)
+                }
+            };
+        }
+
+        var message = composer.ComposeMetricAlerts(
+            "firing", "http://alertmanager-0:9093", [alert], DateTimeOffset.UtcNow).Single().Message;
+        var decoded = WebUtility.HtmlDecode(message);
+
+        decoded.ShouldContain($"href=\"{dashboardUrl}\">Grafana</a>");
+        decoded.ShouldContain($"href=\"{alertmanagerUrl}\">Alertmanager</a>");
+        decoded.ShouldNotContain("Open details");
+        decoded.ShouldNotContain("alertmanager-0");
+        message.ShouldContain("&amp;");
+        message.Length.ShouldBeLessThanOrEqualTo(NotificationMessage.MaxLength);
+        if (longDescription)
+        {
+            message.ShouldContain("Description omitted");
+        }
+    }
+
+    [Fact(DisplayName = "Compose metric alerts should use overview when dashboard is missing")]
+    public void ComposeMetricAlerts_Should_UseOverview_When_DashboardIsMissing()
+    {
+        using var scope = Fixture.CreateScope();
+        const string dashboardUrl = "https://grafana.example/d/overview/overview?from=now-1h&to=now";
+        var composer = new TelegramNotificationComposer(
+            Options.Create(new MetricAlertsOptions { GrafanaDashboardUrl = dashboardUrl }),
+            scope.ServiceProvider.GetRequiredService<ITopicRouter>(),
+            Options.Create(new VictoriaLogsOptions()));
+        var alert = CreateAlert("tests", "overview") with
+        {
+            GeneratorUrl = "http://vmalert:8880/internal"
+        };
+
+        var message = composer.ComposeMetricAlerts("firing", "", [alert], DateTimeOffset.UtcNow).Single().Message;
+
+        WebUtility.HtmlDecode(message).ShouldContain($"href=\"{dashboardUrl}\">Grafana</a>");
+        message.ShouldNotContain("vmalert");
+    }
+
+    [Theory(DisplayName = "Compose metric alerts should omit unusable link when url is invalid or over budget")]
+    [InlineData("file:///C:/private")]
+    [InlineData("javascript:alert(1)")]
+    [InlineData("https://grafana.example/")]
+    public void ComposeMetricAlerts_Should_OmitUnusableLink_When_UrlIsInvalidOrOverBudget(string url)
+    {
+        using var scope = Fixture.CreateScope();
+        var composer = scope.ServiceProvider.GetRequiredService<INotificationComposer>();
+        if (url.StartsWith("https://", StringComparison.Ordinal))
+        {
+            url += new string('x', 1500);
+        }
+        var alert = CreateAlert("tests", "invalid-link") with
+        {
+            Annotations = new Dictionary<string, string> { ["dashboard_url"] = url }
+        };
+
+        var message = composer.ComposeMetricAlerts("firing", "", [alert], DateTimeOffset.UtcNow).Single().Message;
+
+        message.ShouldNotContain("href=");
+        message.ShouldContain("invalid-link");
+        message.Length.ShouldBeLessThanOrEqualTo(NotificationMessage.MaxLength);
+    }
+
+    [Theory(DisplayName = "Metric alert options should validate urls when configured")]
+    [InlineData("", true)]
+    [InlineData("https://grafana.example/alerting/groups?alertmanager=Alertmanager", true)]
+    [InlineData("http://localhost:3000/d/overview", true)]
+    [InlineData("file:///C:/private", false)]
+    [InlineData("/relative", false)]
+    public void MetricAlertsOptions_Should_ValidateUrls_When_Configured(string url, bool valid)
+    {
+        var validator = new MetricAlertsOptionsValidator();
+
+        validator.Validate(null, new MetricAlertsOptions { AlertmanagerUrl = url }).Succeeded.ShouldBe(valid);
+        validator.Validate(null, new MetricAlertsOptions { GrafanaDashboardUrl = url }).Succeeded.ShouldBe(valid);
+        validator.Validate(null, new MetricAlertsOptions { AlertmanagerUrl = "https://grafana.example/" + new string('a', 351) })
+            .Failed.ShouldBeTrue();
+    }
+
+    [Fact(DisplayName = "Metric alert options should reject oversized HTML when raw url fits the old limit")]
+    public void MetricAlertsOptions_Should_RejectOversizedHtml_When_RawUrlFitsTheOldLimit()
+    {
+        var url = "https://grafana.example/?" + string.Concat(Enumerable.Repeat("a=1&", 20)) + new string('x', 190);
+        var validator = new MetricAlertsOptionsValidator();
+
+        var result = validator.Validate(null, new MetricAlertsOptions { AlertmanagerUrl = url });
+
+        url.Length.ShouldBeLessThanOrEqualTo(300);
+        result.Failed.ShouldBeTrue();
+        validator.Validate(null, new MetricAlertsOptions { GrafanaDashboardUrl = url }).Succeeded.ShouldBeTrue();
+    }
+
     [Fact(DisplayName = "Compose metric alerts should paginate without dropping alerts when message limit is reached")]
     public void ComposeMetricAlerts_Should_PaginateWithoutDroppingAlerts_When_MessageLimitIsReached()
     {
@@ -444,6 +571,7 @@ public sealed class TelegramNotificationComposerTests(IntegrationTestFixture fix
     {
         using var scope = Fixture.CreateScope();
         var composer = new TelegramNotificationComposer(
+            Options.Create(new MetricAlertsOptions()),
             scope.ServiceProvider.GetRequiredService<ITopicRouter>(),
             Options.Create(new VictoriaLogsOptions
             {
@@ -682,6 +810,7 @@ public sealed class TelegramNotificationComposerTests(IntegrationTestFixture fix
     {
         using var scope = Fixture.CreateScope();
         var composer = new TelegramNotificationComposer(
+            Options.Create(new MetricAlertsOptions()),
             scope.ServiceProvider.GetRequiredService<ITopicRouter>(),
             Options.Create(new VictoriaLogsOptions
             {
@@ -745,6 +874,7 @@ public sealed class TelegramNotificationComposerTests(IntegrationTestFixture fix
     {
         using var scope = Fixture.CreateScope();
         var composer = new TelegramNotificationComposer(
+            Options.Create(new MetricAlertsOptions()),
             scope.ServiceProvider.GetRequiredService<ITopicRouter>(),
             Options.Create(new VictoriaLogsOptions
             {
@@ -835,6 +965,7 @@ public sealed class TelegramNotificationComposerTests(IntegrationTestFixture fix
     {
         using var scope = Fixture.CreateScope();
         var composer = new TelegramNotificationComposer(
+            Options.Create(new MetricAlertsOptions()),
             scope.ServiceProvider.GetRequiredService<ITopicRouter>(),
             Options.Create(new VictoriaLogsOptions
             {
@@ -881,6 +1012,7 @@ public sealed class TelegramNotificationComposerTests(IntegrationTestFixture fix
     {
         using var scope = Fixture.CreateScope();
         var composer = new TelegramNotificationComposer(
+            Options.Create(new MetricAlertsOptions()),
             scope.ServiceProvider.GetRequiredService<ITopicRouter>(),
             Options.Create(new VictoriaLogsOptions { GrafanaLogsUrl = grafanaUrl }));
         var logEvent = CreateLogEvent(traceId: traceId);
@@ -898,6 +1030,7 @@ public sealed class TelegramNotificationComposerTests(IntegrationTestFixture fix
     {
         using var scope = Fixture.CreateScope();
         var composer = new TelegramNotificationComposer(
+            Options.Create(new MetricAlertsOptions()),
             scope.ServiceProvider.GetRequiredService<ITopicRouter>(),
             Options.Create(new VictoriaLogsOptions { GrafanaLogsUrl = "https://grafana.example/" + new string('a', 5000) }));
         var logEvent = CreateLogEvent(traceId: "0123456789abcdef", fields: new Dictionary<string, string> { ["Detail"] = "Value" });
@@ -1011,6 +1144,7 @@ public sealed class TelegramNotificationComposerTests(IntegrationTestFixture fix
     {
         using var scope = Fixture.CreateScope();
         var composer = new TelegramNotificationComposer(
+            Options.Create(new MetricAlertsOptions()),
             scope.ServiceProvider.GetRequiredService<ITopicRouter>(),
             Options.Create(new VictoriaLogsOptions
             {
@@ -1056,6 +1190,7 @@ public sealed class TelegramNotificationComposerTests(IntegrationTestFixture fix
     {
         using var scope = Fixture.CreateScope();
         var composer = new TelegramNotificationComposer(
+            Options.Create(new MetricAlertsOptions()),
             scope.ServiceProvider.GetRequiredService<ITopicRouter>(),
             Options.Create(new VictoriaLogsOptions { GrafanaLogsUrl = "https://grafana.example/" + new string('a', logsUrlPadding) }));
         const string recordUid = "550e8400-e29b-41d4-a716-446655440000";
@@ -1083,6 +1218,7 @@ public sealed class TelegramNotificationComposerTests(IntegrationTestFixture fix
     {
         using var scope = Fixture.CreateScope();
         var composer = new TelegramNotificationComposer(
+            Options.Create(new MetricAlertsOptions()),
             scope.ServiceProvider.GetRequiredService<ITopicRouter>(),
             Options.Create(new VictoriaLogsOptions { GrafanaLogsUrl = "https://grafana.panixida.ru/explore" }));
         var ids = Enumerable.Range(0, recordCount).Select(_ => Guid.NewGuid().ToString()).ToArray();

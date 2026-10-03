@@ -8,6 +8,7 @@ using PANiXiDA.TelegramAlertGateway.Notifications.Application.Notifications.Abst
 using PANiXiDA.TelegramAlertGateway.Notifications.Domain.Notifications.Abstractions;
 using PANiXiDA.TelegramAlertGateway.Notifications.Infrastructure.Composition;
 using PANiXiDA.TelegramAlertGateway.Notifications.Infrastructure.Configuration.Options.AlertRouting;
+using PANiXiDA.TelegramAlertGateway.Notifications.Infrastructure.Configuration.Options.MetricAlerts;
 using PANiXiDA.TelegramAlertGateway.Notifications.Infrastructure.Configuration.Options.NotificationRetention;
 using PANiXiDA.TelegramAlertGateway.Notifications.Infrastructure.Configuration.Options.Telegram;
 using PANiXiDA.TelegramAlertGateway.Notifications.Infrastructure.Configuration.Options.VictoriaLogs;
@@ -53,6 +54,11 @@ public static class ServiceCollectionExtensions
             NotificationRetentionOptionsValidator>();
         serviceCollection.AddOptions<NotificationRetentionOptions>()
             .Bind(configuration.GetSection(NotificationRetentionOptions.SectionName))
+            .ValidateOnStart();
+
+        serviceCollection.AddSingleton<IValidateOptions<MetricAlertsOptions>, MetricAlertsOptionsValidator>();
+        serviceCollection.AddOptions<MetricAlertsOptions>()
+            .Bind(configuration.GetSection(MetricAlertsOptions.SectionName))
             .ValidateOnStart();
 
         serviceCollection.AddSingleton(TimeProvider.System);
