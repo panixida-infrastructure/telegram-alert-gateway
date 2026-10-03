@@ -132,7 +132,7 @@ public sealed class TelegramNotificationComposerTests(IntegrationTestFixture fix
             .Failed.ShouldBeTrue();
     }
 
-    [Fact(DisplayName = "Metric alert options should reject oversized HTML when raw URL fits the old limit")]
+    [Fact(DisplayName = "Metric alert options should reject oversized HTML when raw url fits the old limit")]
     public void MetricAlertsOptions_Should_RejectOversizedHtml_When_RawUrlFitsTheOldLimit()
     {
         var url = "https://grafana.example/?" + string.Concat(Enumerable.Repeat("a=1&", 20)) + new string('x', 190);
