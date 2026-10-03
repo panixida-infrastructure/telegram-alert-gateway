@@ -41,7 +41,7 @@ public sealed class VictoriaLogsClientTests(IntegrationTestFixture fixture)
             ["log.record.uid"] = index == 0 ? "record\" OR * \\ \n <value>" : Guid.NewGuid().ToString(),
             ["trace_id"] = "0123456789abcdef0123456789abcdef"
         }).ToArray();
-        var logEvent = normalizer.Normalize(records.Take(recordCount).ToArray()).ShouldHaveSingleItem();
+        var logEvent = normalizer.Normalize([.. records.Take(recordCount)]).ShouldHaveSingleItem();
         var options = Options.Create(new VictoriaLogsOptions { GrafanaLogsUrl = "https://grafana.example/explore" });
         var client = new VictoriaLogsClient(httpClient, options);
         var composer = new TelegramNotificationComposer(scope.ServiceProvider.GetRequiredService<ITopicRouter>(), options);
@@ -79,9 +79,9 @@ public sealed class VictoriaLogsClientTests(IntegrationTestFixture fixture)
         if (recordCount > 100)
         {
             query.ShouldContain("| unroll alert.group.record_uids");
-            var changedGroup = logEvent with { RecordUids = logEvent.RecordUids!.Append(records[^1]["log.record.uid"]).ToArray() };
-            var changedQuery = LogGroupQuery.Create(timestamp, changedGroup).ShouldNotBeNull();
-            changedQuery.Query.ShouldNotBe(query);
+            var changedGroup = logEvent with { RecordUids = [.. logEvent.RecordUids!, unrelatedId] };
+            var (changedQuery, _) = LogGroupQuery.Create(timestamp, changedGroup).ShouldNotBeNull();
+            changedQuery.ShouldNotBe(query);
             await client.StoreLogGroupAsync(timestamp, changedGroup, cancellationToken);
             var zoomed = await queryClient.QueryAsync(timestamp.AddSeconds(1), timestamp.AddSeconds(10), cancellationToken);
             zoomed.Select(record => record["log.record.uid"]).Order(StringComparer.Ordinal).ShouldBe(logEvent.RecordUids);
