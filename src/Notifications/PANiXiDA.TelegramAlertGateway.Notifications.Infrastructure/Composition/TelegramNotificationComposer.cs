@@ -649,9 +649,8 @@ internal sealed class TelegramNotificationComposer(
 
         if (!string.IsNullOrWhiteSpace(description))
         {
-            builder.Append(PreformattedTextOpeningTag)
-                .Append(HtmlTruncate(description, 850))
-                .AppendLine(PreformattedTextClosingTag);
+            builder.Append("📖 ")
+                .AppendLine(HtmlTruncate(description, 850));
         }
 
         if (IsHttpUrl(dashboardUrl) && Html(dashboardUrl).Length <= MaxMetricLinkLength)
