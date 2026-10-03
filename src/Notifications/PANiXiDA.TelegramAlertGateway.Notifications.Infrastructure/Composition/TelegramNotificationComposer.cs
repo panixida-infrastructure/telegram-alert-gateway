@@ -262,6 +262,29 @@ internal sealed class TelegramNotificationComposer(
         }
 
         message.AppendLine(PreformattedTextClosingTag);
+        AppendLogLinks(
+            message: message,
+            windowStartUtc: windowStartUtc,
+            logEvent: logEvent,
+            logsUrl: logsUrl);
+
+        return message.ToString();
+    }
+
+    private void AppendLogLinks(
+        StringBuilder message,
+        DateTimeOffset windowStartUtc,
+        LogEvent logEvent,
+        string? logsUrl)
+    {
+        var hasLogsLink = !string.IsNullOrWhiteSpace(logsUrl);
+        var hasTrace = logEvent.Occurrences <= 1 && !string.IsNullOrWhiteSpace(logEvent.TraceId);
+        if (!hasLogsLink && !hasTrace)
+        {
+            return;
+        }
+
+        message.AppendLine();
         if (!string.IsNullOrWhiteSpace(logsUrl))
         {
             message.Append(LinkOpeningTag)
@@ -271,7 +294,7 @@ internal sealed class TelegramNotificationComposer(
                 .AppendLine("</a>");
         }
 
-        if (logEvent.Occurrences <= 1)
+        if (hasTrace)
         {
             AppendTrace(
                 message: message,
@@ -279,8 +302,6 @@ internal sealed class TelegramNotificationComposer(
                 traceId: logEvent.TraceId,
                 includeLink: logsUrl is not null);
         }
-
-        return message.ToString();
     }
 
     private static string GetLogLinkLabel(LogEvent logEvent)
@@ -632,6 +653,7 @@ internal sealed class TelegramNotificationComposer(
             ?? GetValue(alert.Labels, "alert_owner")
             ?? "unclassified";
         var summary = GetValue(alert.Annotations, "summary") ?? "No summary provided.";
+        var target = BuildMetricTarget(alert.Labels);
         var description = GetValue(alert.Annotations, "description");
         var dashboardUrl = GetValue(alert.Annotations, "dashboard_url", "logs_url")
             ?? _metricAlertsOptions.GrafanaDashboardUrl;
@@ -644,6 +666,7 @@ internal sealed class TelegramNotificationComposer(
             .AppendLine(HtmlTruncate(severity.ToUpperInvariant(), 40))
             .Append("📦 ")
             .AppendLine(HtmlTruncate(owner, 180))
+            .Append(target)
             .Append("📝 ")
             .AppendLine(HtmlTruncate(summary, 600));
 
@@ -668,6 +691,7 @@ internal sealed class TelegramNotificationComposer(
                 alertName: alertName,
                 severity: severity,
                 owner: owner,
+                target: target,
                 summary: summary,
                 dashboardUrl: dashboardUrl);
     }
@@ -677,6 +701,7 @@ internal sealed class TelegramNotificationComposer(
         string alertName,
         string severity,
         string owner,
+        string target,
         string summary,
         string? dashboardUrl)
     {
@@ -688,6 +713,7 @@ internal sealed class TelegramNotificationComposer(
             .AppendLine(HtmlTruncate(severity.ToUpperInvariant(), 40))
             .Append("📦 ")
             .AppendLine(HtmlTruncate(owner, 180))
+            .Append(target)
             .Append("📝 ")
             .AppendLine(HtmlTruncate(summary, 600))
             .AppendLine("<i>Description omitted because the alert is too long.</i>");
@@ -700,6 +726,21 @@ internal sealed class TelegramNotificationComposer(
         }
 
         return builder.ToString();
+    }
+
+    private static string BuildMetricTarget(IReadOnlyDictionary<string, string> labels)
+    {
+        var httpUrl = GetValue(labels, "http_url");
+        if (Uri.TryCreate(uriString: httpUrl, uriKind: UriKind.Absolute, result: out var uri)
+            && (uri.Scheme == Uri.UriSchemeHttps || uri.Scheme == Uri.UriSchemeHttp))
+        {
+            return $"🌐 {HtmlTruncate($"{uri.Host}:{uri.Port}", 250)}{Environment.NewLine}";
+        }
+
+        var instance = GetValue(labels, "instance", "service_instance_id");
+        return instance is null
+            ? string.Empty
+            : $"🖥 Instance: {HtmlTruncate(instance, 250)}{Environment.NewLine}";
     }
 
     private static bool IsHttpUrl([NotNullWhen(true)] string? value)

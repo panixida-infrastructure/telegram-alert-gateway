@@ -10,6 +10,9 @@ and sends messages through `Telegram.Bot`.
   `POST /api/v1/webhooks/alertmanager` with a bearer token.
 - Metric alerts preserve `firing` and `resolved` states. Large groups are split into
   multiple Telegram messages; alerts are never silently omitted.
+- Metric alerts show the host and port from `http_url`, without URL credentials,
+  path or query. Otherwise they show `instance` or `service_instance_id`, when
+  present. A public domain is not inferred from a service name or instance ID.
 - Each metric alert uses a `Grafana` link from `dashboard_url` (or `logs_url`),
   preserving the rule's panel, time range and URL-encoded filters. Without these
   annotations, `MetricAlerts:GrafanaDashboardUrl` supplies the overview; an internal
@@ -34,6 +37,7 @@ and sends messages through `Telegram.Bot`.
   are redacted before Telegram rendering. Optional sections are reduced before the
   message can exceed Telegram's delivery limit.
 - The copyable log block contains `message`, then `exceptions`, then `fields`.
+  A blank line separates this block from the adjacent `Log`/`Logs` and `Trace` links.
   Truncated fields report the exact omitted count, including when the entire fields
   block is removed. Exception metadata rendered separately is excluded from that count.
   `log.record.uid` is prioritized in `fields`; collector-generated UUIDs remain
