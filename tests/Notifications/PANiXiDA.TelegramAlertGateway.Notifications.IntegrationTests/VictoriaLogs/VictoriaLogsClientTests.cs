@@ -8,6 +8,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 
 using PANiXiDA.TelegramAlertGateway.Notifications.Infrastructure.Composition;
+using PANiXiDA.TelegramAlertGateway.Notifications.Infrastructure.Configuration.Options.MetricAlerts;
 using PANiXiDA.TelegramAlertGateway.Notifications.Infrastructure.Configuration.Options.VictoriaLogs;
 using PANiXiDA.TelegramAlertGateway.Notifications.Infrastructure.Routing;
 using PANiXiDA.TelegramAlertGateway.Notifications.Infrastructure.VictoriaLogs;
@@ -44,7 +45,7 @@ public sealed class VictoriaLogsClientTests(IntegrationTestFixture fixture)
         var logEvent = normalizer.Normalize([.. records.Take(recordCount)]).ShouldHaveSingleItem();
         var options = Options.Create(new VictoriaLogsOptions { GrafanaLogsUrl = "https://grafana.example/explore" });
         var client = new VictoriaLogsClient(httpClient, options);
-        var composer = new TelegramNotificationComposer(scope.ServiceProvider.GetRequiredService<ITopicRouter>(), options);
+        var composer = new TelegramNotificationComposer(Options.Create(new MetricAlertsOptions()), scope.ServiceProvider.GetRequiredService<ITopicRouter>(), options);
         using var content = new StringContent(string.Join('\n', records.Select(record => JsonSerializer.Serialize(record))) + "\n",
             Encoding.UTF8, "application/stream+json");
         using var inserted = await httpClient.PostAsync("/insert/jsonline?_stream_fields=service.name", content, cancellationToken);
