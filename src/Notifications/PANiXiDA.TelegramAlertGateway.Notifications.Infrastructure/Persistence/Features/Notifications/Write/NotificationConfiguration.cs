@@ -47,7 +47,7 @@ internal sealed class NotificationConfiguration : AuditableEntityConfiguration<N
             .HasConversion(
                 message => message.Value,
                 value => NotificationMessage.Create(value).Value)
-            .HasMaxLength(NotificationMessage.MaxLength)
+            .HasColumnType("text")
             .IsRequired();
 
         builder.OwnsOne(item => item.Delivery, delivery =>

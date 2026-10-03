@@ -10,6 +10,23 @@ namespace PANiXiDA.TelegramAlertGateway.Notifications.IntegrationTests.Persisten
 public sealed class NotificationPersistenceTests(IntegrationTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
+    [Fact(DisplayName = "Save changes async should preserve long HTML when rendered text fits telegram limit")]
+    public async Task SaveChangesAsync_Should_PreserveLongHtml_When_RenderedTextFitsTelegramLimit()
+    {
+        var html = "<pre>" + string.Concat(Enumerable.Repeat("&#1071;", 4096)) + "</pre>";
+        var notification = Notification.Create(key: new string('b', 64), topic: "tests",
+            kind: NotificationKind.LogEvent, message: html, createdAtUtc: DateTimeOffset.UtcNow).Value;
+        await using var scope = Fixture.CreateScope();
+        var context = scope.ServiceProvider.GetRequiredService<NotificationsWriteDbContext>();
+        context.Set<Notification>().Add(notification);
+
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+        context.ChangeTracker.Clear();
+        var stored = await context.Set<Notification>().SingleAsync(TestContext.Current.CancellationToken);
+
+        stored.Message.Value.ShouldBe(html);
+    }
+
     [Fact(DisplayName = "Save changes async should persist enumeration names when notification is added")]
     public async Task SaveChangesAsync_Should_PersistEnumerationNames_When_NotificationIsAdded()
     {
