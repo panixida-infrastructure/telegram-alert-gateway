@@ -128,8 +128,21 @@ public sealed class TelegramNotificationComposerTests(IntegrationTestFixture fix
 
         validator.Validate(null, new MetricAlertsOptions { AlertmanagerUrl = url }).Succeeded.ShouldBe(valid);
         validator.Validate(null, new MetricAlertsOptions { GrafanaDashboardUrl = url }).Succeeded.ShouldBe(valid);
-        validator.Validate(null, new MetricAlertsOptions { AlertmanagerUrl = "https://grafana.example/" + new string('a', 301) })
+        validator.Validate(null, new MetricAlertsOptions { AlertmanagerUrl = "https://grafana.example/" + new string('a', 351) })
             .Failed.ShouldBeTrue();
+    }
+
+    [Fact(DisplayName = "Metric alert options should reject oversized HTML when raw URL fits the old limit")]
+    public void MetricAlertsOptions_Should_RejectOversizedHtml_When_RawUrlFitsTheOldLimit()
+    {
+        var url = "https://grafana.example/?" + string.Concat(Enumerable.Repeat("a=1&", 20)) + new string('x', 190);
+        var validator = new MetricAlertsOptionsValidator();
+
+        var result = validator.Validate(null, new MetricAlertsOptions { AlertmanagerUrl = url });
+
+        url.Length.ShouldBeLessThanOrEqualTo(300);
+        result.Failed.ShouldBeTrue();
+        validator.Validate(null, new MetricAlertsOptions { GrafanaDashboardUrl = url }).Succeeded.ShouldBeTrue();
     }
 
     [Fact(DisplayName = "Compose metric alerts should paginate without dropping alerts when message limit is reached")]

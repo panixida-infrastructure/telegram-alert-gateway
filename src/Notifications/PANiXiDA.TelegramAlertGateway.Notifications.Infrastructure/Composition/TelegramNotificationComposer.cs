@@ -56,9 +56,7 @@ internal sealed class TelegramNotificationComposer(
         IReadOnlyList<AlertmanagerAlert> alerts,
         DateTimeOffset receivedAtUtc)
     {
-        var alertmanagerUrl = string.IsNullOrWhiteSpace(_metricAlertsOptions.AlertmanagerUrl)
-            ? externalUrl
-            : _metricAlertsOptions.AlertmanagerUrl;
+        var alertmanagerLink = BuildAlertmanagerLink(externalUrl);
         var result = new List<ComposedNotification>();
         var deliveryWindow = receivedAtUtc.UtcTicks / MetricDeliveryDeduplicationWindow.Ticks;
 
@@ -93,15 +91,8 @@ internal sealed class TelegramNotificationComposer(
                     .Append(" alert(s)</b>")
                     .AppendLine(pageLabel)
                     .AppendLine()
-                    .Append(pages[index]);
-
-                if (IsHttpUrl(alertmanagerUrl) && Html(alertmanagerUrl).Length <= 350)
-                {
-                    body.AppendLine()
-                        .Append(LinkOpeningTag)
-                        .Append(Html(alertmanagerUrl))
-                        .Append("\">Alertmanager</a>");
-                }
+                    .Append(pages[index])
+                    .Append(alertmanagerLink);
 
                 var alertOccurrences = string.Join(
                     ',',
@@ -617,6 +608,16 @@ internal sealed class TelegramNotificationComposer(
             : length;
     }
 
+    private string BuildAlertmanagerLink(string externalUrl)
+    {
+        var url = string.IsNullOrWhiteSpace(_metricAlertsOptions.AlertmanagerUrl)
+            ? externalUrl
+            : _metricAlertsOptions.AlertmanagerUrl;
+        return IsHttpUrl(url) && Html(url).Length <= 350
+            ? $"{Environment.NewLine}{LinkOpeningTag}{Html(url)}\">Alertmanager</a>"
+            : string.Empty;
+    }
+
     private string BuildMetricAlertBlock(AlertmanagerAlert alert)
     {
         var isResolved = string.Equals(alert.Status, ResolvedStatus, StringComparison.OrdinalIgnoreCase);
@@ -703,7 +704,7 @@ internal sealed class TelegramNotificationComposer(
                && (uri.Scheme == Uri.UriSchemeHttps || uri.Scheme == Uri.UriSchemeHttp);
     }
 
-    private static IReadOnlyList<string> Paginate(IReadOnlyList<string> blocks)
+    private static List<string> Paginate(IReadOnlyList<string> blocks)
     {
         var pages = new List<string>();
         var current = new StringBuilder();
@@ -782,16 +783,6 @@ internal sealed class TelegramNotificationComposer(
         }
 
         return string.Concat(Html(value[..minimum]), "…");
-    }
-
-    private static string Truncate(string value, int maxLength)
-    {
-        if (value.Length <= maxLength)
-        {
-            return value;
-        }
-
-        return string.Concat(value.AsSpan(0, maxLength - 1), "…");
     }
 
 }
