@@ -68,6 +68,7 @@ internal sealed class TelegramNotificationComposer(
                 .ToArray();
             var blocks = orderedAlerts.Select(BuildMetricAlertBlock).ToArray();
             var pages = Paginate(blocks);
+            var resolvedCount = orderedAlerts.Count(alert => string.Equals(alert.Status, ResolvedStatus, StringComparison.OrdinalIgnoreCase));
 
             for (var index = 0; index < pages.Count; index++)
             {
@@ -85,9 +86,11 @@ internal sealed class TelegramNotificationComposer(
                     : string.Empty;
                 var body = new StringBuilder()
                     .AppendLine(header)
-                    .Append("📊 <b>")
-                    .Append(orderedAlerts.Length)
-                    .Append(" alert(s)</b>")
+                    .Append("📊 Firing: <b>")
+                    .Append(orderedAlerts.Length - resolvedCount)
+                    .Append("</b> | Resolved: <b>")
+                    .Append(resolvedCount)
+                    .Append("</b>")
                     .AppendLine(pageLabel)
                     .AppendLine()
                     .Append(pages[index])
@@ -730,17 +733,64 @@ internal sealed class TelegramNotificationComposer(
 
     private static string BuildMetricTarget(IReadOnlyDictionary<string, string> labels)
     {
-        var httpUrl = GetValue(labels, "http_url");
-        if (Uri.TryCreate(uriString: httpUrl, uriKind: UriKind.Absolute, result: out var uri)
-            && (uri.Scheme == Uri.UriSchemeHttps || uri.Scheme == Uri.UriSchemeHttp))
+        var builder = new StringBuilder();
+        var endpoint = GetHttpOrigin(GetValue(labels, "http_url"));
+        if (endpoint is not null)
         {
-            return $"🌐 {HtmlTruncate($"{uri.Host}:{uri.Port}", 250)}{Environment.NewLine}";
+            builder.Append("🌐 ").AppendLine(FormatMetricAddress(endpoint, $"{endpoint.Host}:{endpoint.Port}"));
         }
 
         var instance = GetValue(labels, "instance", "service_instance_id");
-        return instance is null
-            ? string.Empty
-            : $"🖥 Instance: {HtmlTruncate(instance, 250)}{Environment.NewLine}";
+        if (instance is not null)
+        {
+            var address = GetHttpOrigin(instance) ?? GetInstanceOrigin(instance);
+            var label = address is null ? instance : $"{address.Host}:{address.Port}";
+            builder.Append("🖥 Instance: ").AppendLine(FormatMetricAddress(address, label));
+        }
+
+        return builder.ToString();
+    }
+
+    private static string FormatMetricAddress(Uri? address, string label)
+    {
+        var text = HtmlTruncate(label, 200);
+        if (address is null)
+        {
+            return text;
+        }
+
+        var link = $"<a href=\"{Html(address.AbsoluteUri)}\">{text}</a>";
+        return link.Length <= 200 ? link : text;
+    }
+
+    private static Uri? GetHttpOrigin(string? value)
+    {
+        if (!Uri.TryCreate(uriString: value, uriKind: UriKind.Absolute, result: out var uri)
+            || (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps)
+            || uri.HostNameType is UriHostNameType.Basic or UriHostNameType.Unknown)
+        {
+            return null;
+        }
+
+        return new UriBuilder { Scheme = uri.Scheme, Host = uri.Host, Port = uri.Port }.Uri;
+    }
+
+    private static Uri? GetInstanceOrigin(string instance)
+    {
+        var separator = instance.LastIndexOf(':');
+        if (separator <= 0 || instance.IndexOfAny(['/', '\\', '?', '#', '@']) >= 0
+            || !int.TryParse(instance.AsSpan(separator + 1), out var port))
+        {
+            return null;
+        }
+
+        var scheme = port switch
+        {
+            80 or 8080 or 8081 or 9100 => Uri.UriSchemeHttp,
+            443 or 8443 => Uri.UriSchemeHttps,
+            _ => null
+        };
+        return scheme is null ? null : GetHttpOrigin($"{scheme}://{instance}");
     }
 
     private static bool IsHttpUrl([NotNullWhen(true)] string? value)
