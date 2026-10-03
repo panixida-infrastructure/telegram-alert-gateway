@@ -51,7 +51,8 @@ public sealed class TelegramNotificationComposerTests(IntegrationTestFixture fix
                 {
                     ["alertname"] = new string('a', 180),
                     ["service_name"] = new string('s', 180),
-                    ["severity"] = new string('w', 40)
+                    ["severity"] = new string('w', 40),
+                    ["instance"] = new string('i', 500)
                 }
             };
         }
@@ -72,11 +73,56 @@ public sealed class TelegramNotificationComposerTests(IntegrationTestFixture fix
         if (longDescription)
         {
             message.ShouldContain("Description omitted");
+            message.ShouldContain("🖥 Instance: ");
         }
         else
         {
             message.ShouldContain($"📖 Route &lt;api&gt; &amp; p95 &gt; 2s{Environment.NewLine}");
         }
+    }
+
+    [Theory(DisplayName = "Compose metric alerts should identify target when endpoint or instance labels are available")]
+    [InlineData("https://demo:secret@example.com/health?token=secret", "collector:8888", "", "🌐 example.com:443")]
+    [InlineData("http://example.com:8080/health", "", "", "🌐 example.com:8080")]
+    [InlineData("https://[2001:db8::1]:8443/health", "", "", "🌐 [2001:db8::1]:8443")]
+    [InlineData("", "example.com:9100", "worker-1", "🖥 Instance: example.com:9100")]
+    [InlineData("file:///private", "worker<&>:9100", "", "🖥 Instance: worker&lt;&amp;&gt;:9100")]
+    [InlineData("", "", "worker-1", "🖥 Instance: worker-1")]
+    [InlineData("", "", "", "")]
+    public void ComposeMetricAlerts_Should_IdentifyTarget_When_EndpointOrInstanceLabelsAreAvailable(
+        string httpUrl,
+        string instance,
+        string serviceInstanceId,
+        string expectedTarget)
+    {
+        using var scope = Fixture.CreateScope();
+        var composer = scope.ServiceProvider.GetRequiredService<INotificationComposer>();
+        var alert = CreateAlert("tests", "endpoint") with
+        {
+            Labels = new Dictionary<string, string>
+            {
+                ["alert_owner"] = "tests",
+                ["http_url"] = httpUrl,
+                ["instance"] = instance,
+                ["service_instance_id"] = serviceInstanceId
+            }
+        };
+
+        var message = composer.ComposeMetricAlerts("firing", "", [alert], DateTimeOffset.UtcNow).Single().Message;
+        var targetLines = message.Split(Environment.NewLine)
+            .Where(line => line.StartsWith("🌐 ", StringComparison.Ordinal) || line.StartsWith("🖥 ", StringComparison.Ordinal))
+            .ToArray();
+
+        if (expectedTarget.Length == 0)
+        {
+            targetLines.ShouldBeEmpty();
+        }
+        else
+        {
+            targetLines.ShouldBe([expectedTarget]);
+        }
+        message.ShouldNotContain("secret");
+        message.ShouldNotContain("file:///private");
     }
 
     [Fact(DisplayName = "Compose metric alerts should use overview when dashboard is missing")]
@@ -410,6 +456,7 @@ public sealed class TelegramNotificationComposerTests(IntegrationTestFixture fix
             }</pre>
             """.ReplaceLineEndings("\n"));
         notification.Message.ShouldContain("Logs for this source and window");
+        notification.Message.ShouldContain($"</pre>{Environment.NewLine}{Environment.NewLine}🔗 ");
         notification.Message.ShouldContain("%22queryType%22%3A%22instant%22");
         notification.Message.ShouldContain(
             "_stream_id%3A0000007b000001c850d9950ea6196b1a4812081265faa1c7");
@@ -989,6 +1036,7 @@ public sealed class TelegramNotificationComposerTests(IntegrationTestFixture fix
 
         var traceLine = notification.Message.Split('\n').Single(line => line.StartsWith("🔎 ", StringComparison.Ordinal));
         traceLine.ShouldContain("\">Trace</a>");
+        notification.Message.ShouldContain($"</a>{Environment.NewLine}🔎 ");
         var hrefStart = traceLine.IndexOf("href=\"", StringComparison.Ordinal) + "href=\"".Length;
         var hrefEnd = traceLine.IndexOf('"', hrefStart);
         var uri = new Uri(WebUtility.HtmlDecode(traceLine[hrefStart..hrefEnd]));
@@ -1033,6 +1081,10 @@ public sealed class TelegramNotificationComposerTests(IntegrationTestFixture fix
         var traceLine = notification.Message.Split('\n').Single(line => line.StartsWith("🔎 ", StringComparison.Ordinal));
         traceLine.ShouldNotContain("<a ");
         WebUtility.HtmlDecode(traceLine).ShouldContain($"<code>{traceId}</code>");
+        if (grafanaUrl.Length == 0)
+        {
+            notification.Message.ShouldContain($"</pre>{Environment.NewLine}{Environment.NewLine}🔎 ");
+        }
         notification.Message.Length.ShouldBeLessThanOrEqualTo(NotificationMessage.MaxLength);
     }
 
@@ -1173,6 +1225,7 @@ public sealed class TelegramNotificationComposerTests(IntegrationTestFixture fix
         var decoded = WebUtility.HtmlDecode(notification.Message);
         decoded.ShouldContain("\"log.record.uid\":");
         decoded.ShouldContain(">Log</a>");
+        decoded.ShouldContain($"</pre>{Environment.NewLine}{Environment.NewLine}🔗 ");
         decoded.ShouldNotContain("matching events");
         decoded.ShouldNotContain("Logs for this source and window");
         var hrefStart = decoded.IndexOf("href=\"", StringComparison.Ordinal) + "href=\"".Length;
@@ -1251,6 +1304,7 @@ public sealed class TelegramNotificationComposerTests(IntegrationTestFixture fix
 
         var decoded = WebUtility.HtmlDecode(notification.Message);
         decoded.ShouldContain(">Logs</a>");
+        decoded.ShouldContain($"</pre>{Environment.NewLine}{Environment.NewLine}🔗 ");
         decoded.ShouldNotContain("🔎");
         decoded.ShouldContain($"\"log.record.uid\": \"{ids[0]}\"");
         decoded.ShouldContain($"At least <b>{recordCount} matching events</b>");
