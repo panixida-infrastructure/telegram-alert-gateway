@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Net;
 using System.Text.Json;
+using System.Xml.Linq;
 
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
@@ -69,10 +70,10 @@ public sealed class TelegramNotificationComposerTests(IntegrationTestFixture fix
         decoded.ShouldNotContain("alertmanager-0");
         message.ShouldNotContain("<pre>");
         message.ShouldContain("&amp;");
-        message.Length.ShouldBeLessThanOrEqualTo(NotificationMessage.MaxLength);
+        ReadMessageText(message).EnumerateRunes().Count().ShouldBeLessThanOrEqualTo(NotificationMessage.MaxLength);
         if (longDescription)
         {
-            message.ShouldContain("Description omitted");
+            message.ShouldContain(new string('d', 900));
             message.ShouldContain("🖥 Instance: ");
         }
         else
@@ -132,8 +133,8 @@ public sealed class TelegramNotificationComposerTests(IntegrationTestFixture fix
         message.ShouldNotContain("file:///private");
     }
 
-    [Fact(DisplayName = "Compose metric alerts should keep target as text when link exceeds target budget")]
-    public void ComposeMetricAlerts_Should_KeepTargetAsText_When_LinkExceedsTargetBudget()
+    [Fact(DisplayName = "Compose metric alerts should preserve target link when url exceeds old budget")]
+    public void ComposeMetricAlerts_Should_PreserveTargetLink_When_UrlExceedsOldBudget()
     {
         using var scope = Fixture.CreateScope();
         var composer = scope.ServiceProvider.GetRequiredService<INotificationComposer>();
@@ -148,9 +149,9 @@ public sealed class TelegramNotificationComposerTests(IntegrationTestFixture fix
 
         var message = composer.ComposeMetricAlerts("firing", "", [alert], DateTimeOffset.UtcNow).Single().Message;
 
-        message.ShouldContain("🌐 longlabel.");
-        message.ShouldNotContain("<a ");
-        message.Length.ShouldBeLessThanOrEqualTo(NotificationMessage.MaxLength);
+        ReadMessageText(message).ShouldContain("🌐 longlabel.");
+        message.ShouldContain("<a ");
+        ReadMessageText(message).EnumerateRunes().Count().ShouldBeLessThanOrEqualTo(NotificationMessage.MaxLength);
     }
 
     [Fact(DisplayName = "Compose metric alerts should count each status when group contains firing and resolved alerts")]
@@ -185,19 +186,14 @@ public sealed class TelegramNotificationComposerTests(IntegrationTestFixture fix
         message.ShouldNotContain("vmalert");
     }
 
-    [Theory(DisplayName = "Compose metric alerts should omit unusable link when url is invalid or over budget")]
+    [Theory(DisplayName = "Compose metric alerts should omit unusable link when url is invalid")]
     [InlineData("")]
     [InlineData("file:///C:/private")]
     [InlineData("javascript:alert(1)")]
-    [InlineData("https://grafana.example/")]
-    public void ComposeMetricAlerts_Should_OmitUnusableLink_When_UrlIsInvalidOrOverBudget(string url)
+    public void ComposeMetricAlerts_Should_OmitUnusableLink_When_UrlIsInvalid(string url)
     {
         using var scope = Fixture.CreateScope();
         var composer = scope.ServiceProvider.GetRequiredService<INotificationComposer>();
-        if (url.StartsWith("https://", StringComparison.Ordinal))
-        {
-            url += new string('x', 1500);
-        }
         var alert = CreateAlert("tests", "invalid-link") with
         {
             Annotations = new Dictionary<string, string> { ["dashboard_url"] = url }
@@ -208,7 +204,7 @@ public sealed class TelegramNotificationComposerTests(IntegrationTestFixture fix
         message.ShouldNotContain(">Grafana</a>");
         message.ShouldContain($"{Environment.NewLine}{Environment.NewLine}🔗 <a href=\"https://alertmanager.example\">Alertmanager</a>");
         message.ShouldContain("invalid-link");
-        message.Length.ShouldBeLessThanOrEqualTo(NotificationMessage.MaxLength);
+        ReadMessageText(message).EnumerateRunes().Count().ShouldBeLessThanOrEqualTo(NotificationMessage.MaxLength);
     }
 
     [Theory(DisplayName = "Metric alert options should validate urls when configured")]
@@ -224,11 +220,11 @@ public sealed class TelegramNotificationComposerTests(IntegrationTestFixture fix
         validator.Validate(null, new MetricAlertsOptions { AlertmanagerUrl = url }).Succeeded.ShouldBe(valid);
         validator.Validate(null, new MetricAlertsOptions { GrafanaDashboardUrl = url }).Succeeded.ShouldBe(valid);
         validator.Validate(null, new MetricAlertsOptions { AlertmanagerUrl = "https://grafana.example/" + new string('a', 351) })
-            .Failed.ShouldBeTrue();
+            .Succeeded.ShouldBeTrue();
     }
 
-    [Fact(DisplayName = "Metric alert options should reject oversized HTML when raw url fits the old limit")]
-    public void MetricAlertsOptions_Should_RejectOversizedHtml_When_RawUrlFitsTheOldLimit()
+    [Fact(DisplayName = "Metric alert options should accept long HTML when url is valid")]
+    public void MetricAlertsOptions_Should_AcceptLongHtml_When_UrlIsValid()
     {
         var url = "https://grafana.example/?" + string.Concat(Enumerable.Repeat("a=1&", 20)) + new string('x', 190);
         var validator = new MetricAlertsOptionsValidator();
@@ -236,7 +232,7 @@ public sealed class TelegramNotificationComposerTests(IntegrationTestFixture fix
         var result = validator.Validate(null, new MetricAlertsOptions { AlertmanagerUrl = url });
 
         url.Length.ShouldBeLessThanOrEqualTo(300);
-        result.Failed.ShouldBeTrue();
+        result.Succeeded.ShouldBeTrue();
         validator.Validate(null, new MetricAlertsOptions { GrafanaDashboardUrl = url }).Succeeded.ShouldBeTrue();
     }
 
@@ -274,7 +270,7 @@ public sealed class TelegramNotificationComposerTests(IntegrationTestFixture fix
 
         notifications.Count.ShouldBeGreaterThan(1);
         notifications.ShouldAllBe(item => item.Topic == "tactical-heroes");
-        notifications.ShouldAllBe(item => item.Message.Length <= NotificationMessage.MaxLength);
+        notifications.ShouldAllBe(item => ReadMessageText(item.Message).EnumerateRunes().Count() <= NotificationMessage.MaxLength);
         rendered.ShouldNotContain("---");
         rendered.ShouldNotContain("────────────");
         rendered.ShouldContain($"{Environment.NewLine}• • •{Environment.NewLine}{Environment.NewLine}🔥");
@@ -502,7 +498,7 @@ public sealed class TelegramNotificationComposerTests(IntegrationTestFixture fix
             "_stream_id%3A0000007b000001c850d9950ea6196b1a4812081265faa1c7");
         notification.Message.ShouldContain(
             timestamp.ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture));
-        notification.Message.Length.ShouldBeLessThanOrEqualTo(NotificationMessage.MaxLength);
+        ReadMessageText(notification.Message).EnumerateRunes().Count().ShouldBeLessThanOrEqualTo(NotificationMessage.MaxLength);
     }
 
     [Theory(DisplayName = "Compose log event should render legacy exception names when exception details are available")]
@@ -701,10 +697,12 @@ public sealed class TelegramNotificationComposerTests(IntegrationTestFixture fix
 
         var notification = composer.ComposeLogEvent(logEvent.Timestamp, logEvent);
 
-        notification.Message.Length.ShouldBeLessThanOrEqualTo(NotificationMessage.MaxLength);
+        ReadMessageText(notification.Message).EnumerateRunes().Count().ShouldBeLessThanOrEqualTo(NotificationMessage.MaxLength);
         using var document = ReadExceptions(notification.Message);
         var exceptions = document.RootElement.EnumerateArray().ToArray();
-        exceptions.Select(item => item.GetProperty("Depth").GetInt32()).ShouldBe([0, 1, 2, 3, 19]);
+        exceptions.Length.ShouldBeInRange(2, 19);
+        exceptions[0].GetProperty("Depth").GetInt32().ShouldBe(0);
+        exceptions[^1].GetProperty("Depth").GetInt32().ShouldBe(19);
         foreach (var exception in exceptions)
         {
             var message = exception.GetProperty("Message").GetString().ShouldNotBeNull();
@@ -713,7 +711,7 @@ public sealed class TelegramNotificationComposerTests(IntegrationTestFixture fix
             content.ShouldStartWith(message[..^1]);
         }
 
-        notification.Message.ShouldContain("15 exceptions omitted");
+        notification.Message.ShouldContain($"{20 - exceptions.Length} exceptions omitted");
         notification.Message.Split("<pre>").Length.ShouldBe(2);
         notification.Message.Split("</pre>").Length.ShouldBe(2);
     }
@@ -781,7 +779,7 @@ public sealed class TelegramNotificationComposerTests(IntegrationTestFixture fix
 
         decoded[fieldsStart..].ShouldContain("\"source\": \"stdout\"");
         decoded[fieldsStart..].ShouldContain("\"HResult\": \"generic context\"");
-        notification.Message.Length.ShouldBeLessThanOrEqualTo(NotificationMessage.MaxLength);
+        ReadMessageText(notification.Message).EnumerateRunes().Count().ShouldBeLessThanOrEqualTo(NotificationMessage.MaxLength);
     }
 
     [Fact(DisplayName = "Compose log event should preserve distinct error fields when exception message is provided")]
@@ -895,7 +893,7 @@ public sealed class TelegramNotificationComposerTests(IntegrationTestFixture fix
 
         var notification = composer.ComposeLogEvent(windowStart, logEvent);
 
-        notification.Message.Length.ShouldBeLessThanOrEqualTo(NotificationMessage.MaxLength);
+        ReadMessageText(notification.Message).EnumerateRunes().Count().ShouldBeLessThanOrEqualTo(NotificationMessage.MaxLength);
         notification.Message.ShouldContain("Logs for this source and window");
     }
 
@@ -933,7 +931,7 @@ public sealed class TelegramNotificationComposerTests(IntegrationTestFixture fix
 
         var notification = composer.ComposeLogEvent(logEvent.Timestamp, logEvent);
 
-        notification.Message.Length.ShouldBeLessThanOrEqualTo(NotificationMessage.MaxLength);
+        ReadMessageText(notification.Message).EnumerateRunes().Count().ShouldBeLessThanOrEqualTo(NotificationMessage.MaxLength);
         var decoded = WebUtility.HtmlDecode(notification.Message).ReplaceLineEndings("\n");
         using var document = ReadExceptions(notification.Message);
         var exception = document.RootElement.EnumerateArray().ShouldHaveSingleItem();
@@ -962,13 +960,12 @@ public sealed class TelegramNotificationComposerTests(IntegrationTestFixture fix
     }
 
     [Theory(DisplayName = "Compose log event should preserve valid JSON when fields exceed message budget")]
-    [InlineData(0, 700)]
-    [InlineData(1000, 450)]
-    [InlineData(1750, 250)]
-    [InlineData(5000, 0)]
+    [InlineData(0)]
+    [InlineData(1000)]
+    [InlineData(1750)]
+    [InlineData(5000)]
     public void ComposeLogEvent_Should_PreserveValidJson_When_FieldsExceedMessageBudget(
-        int logsUrlPadding,
-        int expectedFieldsBudget)
+        int logsUrlPadding)
     {
         using var scope = Fixture.CreateScope();
         var composer = new TelegramNotificationComposer(
@@ -1001,19 +998,11 @@ public sealed class TelegramNotificationComposerTests(IntegrationTestFixture fix
 
         var notification = composer.ComposeLogEvent(windowStart, logEvent);
 
-        notification.Message.Length.ShouldBeLessThanOrEqualTo(NotificationMessage.MaxLength);
-        if (expectedFieldsBudget == 0)
-        {
-            notification.Message.ShouldNotContain("fields:");
-            WebUtility.HtmlDecode(notification.Message).ShouldContain($"… ({fields.Count} fields omitted)");
-            return;
-        }
-
+        ReadMessageText(notification.Message).EnumerateRunes().Count().ShouldBeLessThanOrEqualTo(NotificationMessage.MaxLength);
         var fieldsStart = notification.Message.IndexOf("fields:", StringComparison.Ordinal);
         fieldsStart.ShouldBeGreaterThanOrEqualTo(0);
         var fieldsEnd = notification.Message.IndexOf("</pre>", fieldsStart, StringComparison.Ordinal);
         var encodedFields = notification.Message[fieldsStart..fieldsEnd];
-        encodedFields.Length.ShouldBeLessThanOrEqualTo(expectedFieldsBudget);
         var decodedFields = WebUtility.HtmlDecode(encodedFields).ReplaceLineEndings("\n");
         var noticeStart = decodedFields.LastIndexOf("\n… (", StringComparison.Ordinal);
         noticeStart.ShouldBeGreaterThan(0);
@@ -1023,7 +1012,6 @@ public sealed class TelegramNotificationComposerTests(IntegrationTestFixture fix
         properties.Length.ShouldBeGreaterThan(0);
         properties.Length.ShouldBeLessThan(fields.Count);
         decodedFields.ShouldEndWith($"\n… ({fields.Count - properties.Length} fields omitted)");
-        document.RootElement.TryGetProperty("A", out _).ShouldBeFalse();
         foreach (var property in properties)
         {
             property.Value.GetString().ShouldBe(fields[property.Name]);
@@ -1040,7 +1028,7 @@ public sealed class TelegramNotificationComposerTests(IntegrationTestFixture fix
     {
         using var scope = Fixture.CreateScope();
         var composer = scope.ServiceProvider.GetRequiredService<INotificationComposer>();
-        var fields = Enumerable.Range(0, omittedCount).ToDictionary(index => $"Long{index}", _ => new string('x', 1000));
+        var fields = Enumerable.Range(0, omittedCount).ToDictionary(index => $"Long{index}", _ => new string('x', 10000));
         fields.Add("Small", "retained");
         fields.Add("exception.message", "Cause");
         fields.Add("exception.hresult", "-1");
@@ -1053,7 +1041,7 @@ public sealed class TelegramNotificationComposerTests(IntegrationTestFixture fix
         decoded.ShouldContain("\"Small\": \"retained\"");
         decoded.ShouldContain($"… ({omittedCount} fields omitted)");
         decoded.ShouldNotContain("some fields omitted");
-        notification.Message.Length.ShouldBeLessThanOrEqualTo(NotificationMessage.MaxLength);
+        ReadMessageText(notification.Message).EnumerateRunes().Count().ShouldBeLessThanOrEqualTo(NotificationMessage.MaxLength);
     }
 
     [Theory(DisplayName = "Compose log event should link trace in Grafana when trace id is valid")]
@@ -1098,7 +1086,7 @@ public sealed class TelegramNotificationComposerTests(IntegrationTestFixture fix
         pane.GetProperty("range").GetProperty("to").GetString()
             .ShouldBe(logEvent.Timestamp.AddMinutes(2).ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture));
         notification.Message.ShouldContain("Logs for this source and window");
-        notification.Message.Length.ShouldBeLessThanOrEqualTo(NotificationMessage.MaxLength);
+        ReadMessageText(notification.Message).EnumerateRunes().Count().ShouldBeLessThanOrEqualTo(NotificationMessage.MaxLength);
     }
 
     [Theory(DisplayName = "Compose log event should keep trace as text when safe trace link cannot be built")]
@@ -1125,11 +1113,11 @@ public sealed class TelegramNotificationComposerTests(IntegrationTestFixture fix
         {
             notification.Message.ShouldContain($"</pre>{Environment.NewLine}{Environment.NewLine}🔎 ");
         }
-        notification.Message.Length.ShouldBeLessThanOrEqualTo(NotificationMessage.MaxLength);
+        ReadMessageText(notification.Message).EnumerateRunes().Count().ShouldBeLessThanOrEqualTo(NotificationMessage.MaxLength);
     }
 
-    [Fact(DisplayName = "Compose log event should keep trace ID and omitted field count when links exceed message limit")]
-    public void ComposeLogEvent_Should_KeepTraceIdAndOmittedFieldCount_When_LinksExceedMessageLimit()
+    [Fact(DisplayName = "Compose log event should preserve links and fields when html exceeds text limit")]
+    public void ComposeLogEvent_Should_PreserveLinksAndFields_When_HtmlExceedsTextLimit()
     {
         using var scope = Fixture.CreateScope();
         var composer = new TelegramNotificationComposer(
@@ -1140,11 +1128,12 @@ public sealed class TelegramNotificationComposerTests(IntegrationTestFixture fix
 
         var notification = composer.ComposeLogEvent(logEvent.Timestamp, logEvent);
 
-        notification.Message.ShouldContain("<code>0123456789abcdef</code>");
-        notification.Message.ShouldNotContain("<a ");
-        notification.Message.ShouldNotContain("fields:");
-        WebUtility.HtmlDecode(notification.Message).ShouldContain("… (1 fields omitted)");
-        notification.Message.Length.ShouldBeLessThanOrEqualTo(NotificationMessage.MaxLength);
+        notification.Message.ShouldContain(">Trace</a>");
+        notification.Message.ShouldContain(">Logs for this source and window</a>");
+        notification.Message.ShouldContain("fields:");
+        notification.Message.ShouldNotContain("fields omitted");
+        notification.Message.Length.ShouldBeGreaterThan(4096);
+        ReadMessageText(notification.Message).EnumerateRunes().Count().ShouldBeLessThanOrEqualTo(NotificationMessage.MaxLength);
     }
 
     [Fact(DisplayName = "Compose log event should create new key for next window when same error repeats")]
@@ -1213,6 +1202,143 @@ public sealed class TelegramNotificationComposerTests(IntegrationTestFixture fix
 
         retryNotification.Key.ShouldBe(firstNotification.Key);
         scheduledRepeatNotification.Key.ShouldNotBe(firstNotification.Key);
+    }
+
+    private static string ReadMessageText(string html) => XElement.Parse("<message>" + html.Replace("\r", "&#13;", StringComparison.Ordinal) + "</message>", LoadOptions.PreserveWhitespace).Value;
+
+    [Fact(DisplayName = "Compose log event should return unused space to message when oversized fields are omitted")]
+    public void ComposeLogEvent_Should_ReturnUnusedSpaceToMessage_When_OversizedFieldsAreOmitted()
+    {
+        using var scope = Fixture.CreateScope();
+        var composer = scope.ServiceProvider.GetRequiredService<INotificationComposer>();
+        var logEvent = CreateLogEvent(fields: new Dictionary<string, string> { ["Huge"] = new string('f', 10000) })
+            with
+        { Message = new string('m', 8000) };
+
+        var notification = composer.ComposeLogEvent(logEvent.Timestamp, logEvent);
+        var text = ReadMessageText(notification.Message);
+
+        text.EnumerateRunes().Count().ShouldBe(4096);
+        text.ShouldContain(new string('m', 3500));
+        text.ShouldContain("1 fields omitted");
+        notification.Message.ShouldContain(">Logs for this source and window</a>");
+    }
+
+    [Fact(DisplayName = "Compose log event should preserve every exception when small chain exceeds old entry cap")]
+    public void ComposeLogEvent_Should_PreserveEveryException_When_SmallChainExceedsOldEntryCap()
+    {
+        using var scope = Fixture.CreateScope();
+        var composer = scope.ServiceProvider.GetRequiredService<INotificationComposer>();
+        var stack = "System.Exception: Outer" + string.Concat(Enumerable.Repeat("\n ---> System.Exception: Cause", 5))
+                    + "\n   at Cause.Read()" + string.Concat(Enumerable.Repeat("\n   --- End of inner exception stack trace ---\n   at Wrapper.Run()", 5));
+        var logEvent = CreateLogEvent() with { StackTrace = stack };
+
+        var notification = composer.ComposeLogEvent(logEvent.Timestamp, logEvent);
+        using var exceptions = ReadExceptions(notification.Message);
+
+        exceptions.RootElement.GetArrayLength().ShouldBe(6);
+        notification.Message.ShouldNotContain("omitted");
+        ReadMessageText(notification.Message).EnumerateRunes().Count().ShouldBeLessThanOrEqualTo(4096);
+    }
+
+    [Fact(DisplayName = "Compose log event should preserve all details when full text fits telegram limit")]
+    public void ComposeLogEvent_Should_PreserveAllDetails_When_FullTextFitsTelegramLimit()
+    {
+        using var scope = Fixture.CreateScope();
+        var composer = scope.ServiceProvider.GetRequiredService<INotificationComposer>();
+        var fields = Enumerable.Range(0, 15).ToDictionary(index => $"Field{index}", _ => new string('я', 60));
+        var logEvent = CreateLogEvent(fields: fields) with { Message = new string('я', 1200), StackTrace = new string('s', 800) };
+
+        var notification = composer.ComposeLogEvent(logEvent.Timestamp, logEvent);
+        var text = ReadMessageText(notification.Message);
+
+        text.ShouldContain(logEvent.Message);
+        text.ShouldContain(logEvent.StackTrace);
+        text.ShouldNotContain("omitted");
+        text.ShouldNotContain("…");
+        foreach (var field in fields)
+        {
+            text.ShouldContain($"\"{field.Key}\": \"{field.Value}\"");
+        }
+        text.EnumerateRunes().Count().ShouldBeLessThanOrEqualTo(4096);
+        notification.Message.Length.ShouldBeGreaterThan(4096);
+    }
+
+    [Theory(DisplayName = "Compose log event should reuse unused detail space when only one block is large")]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ComposeLogEvent_Should_ReuseUnusedDetailSpace_When_OnlyOneBlockIsLarge(bool largeException)
+    {
+        using var scope = Fixture.CreateScope();
+        var composer = scope.ServiceProvider.GetRequiredService<INotificationComposer>();
+        var fields = largeException ? new Dictionary<string, string> { ["Small"] = "retained" }
+            : Enumerable.Range(0, 100).ToDictionary(index => $"Field{index:D2}", _ => new string('f', 80));
+        var logEvent = CreateLogEvent(fields: fields) with { StackTrace = largeException ? new string('s', 8000) : null };
+
+        var notification = composer.ComposeLogEvent(logEvent.Timestamp, logEvent);
+        var text = ReadMessageText(notification.Message);
+
+        text.EnumerateRunes().Count().ShouldBeInRange(3950, 4096);
+        if (largeException)
+        {
+            using var exceptions = ReadExceptions(notification.Message);
+            exceptions.RootElement[0].GetProperty("StackTraceString").GetString()!.Length.ShouldBeGreaterThan(3000);
+            text.ShouldContain("retained");
+        }
+        else
+        {
+            text.ShouldContain("fields omitted");
+            text.ShouldContain("Field30");
+        }
+    }
+
+    [Fact(DisplayName = "Compose log event should use exact text limit when message alone is oversized")]
+    public void ComposeLogEvent_Should_UseExactTextLimit_When_MessageAloneIsOversized()
+    {
+        using var scope = Fixture.CreateScope();
+        var composer = scope.ServiceProvider.GetRequiredService<INotificationComposer>();
+        var logEvent = CreateLogEvent() with { Message = string.Concat(Enumerable.Repeat("Я🙂<&>", 2000)), ExceptionType = null, StackTrace = null };
+
+        var notification = composer.ComposeLogEvent(logEvent.Timestamp, logEvent);
+        var text = ReadMessageText(notification.Message);
+
+        text.EnumerateRunes().Count().ShouldBe(4096);
+        text.ShouldNotContain("\uFFFD");
+        text.ShouldContain("…");
+    }
+
+    [Theory(DisplayName = "Compose metric alerts should use available space when description exceeds old limit")]
+    [InlineData(2500)]
+    [InlineData(8000)]
+    public void ComposeMetricAlerts_Should_UseAvailableSpace_When_DescriptionExceedsOldLimit(int descriptionLength)
+    {
+        using var scope = Fixture.CreateScope();
+        var composer = scope.ServiceProvider.GetRequiredService<INotificationComposer>();
+        var alert = CreateAlert("tests", "long-description") with
+        {
+            Annotations = new Dictionary<string, string>
+            {
+                ["description"] = new string('я', descriptionLength),
+                ["dashboard_url"] = "https://grafana.example/" + new string('x', 2000)
+            }
+        };
+
+        var message = composer.ComposeMetricAlerts("firing", "https://alertmanager.example", [alert], DateTimeOffset.UtcNow).Single().Message;
+        var text = ReadMessageText(message);
+
+        message.ShouldContain(">Grafana</a>");
+        message.ShouldContain(">Alertmanager</a>");
+        text.EnumerateRunes().Count().ShouldBeLessThanOrEqualTo(4096);
+        if (descriptionLength == 2500)
+        {
+            text.ShouldContain(new string('я', descriptionLength));
+            text.ShouldNotContain("…");
+        }
+        else
+        {
+            text.EnumerateRunes().Count().ShouldBe(4096);
+            text.ShouldContain("…");
+        }
     }
 
     private static JsonDocument ReadExceptions(string message)
@@ -1284,7 +1410,7 @@ public sealed class TelegramNotificationComposerTests(IntegrationTestFixture fix
             .ShouldBe(logEvent.Timestamp.ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture));
         pane.GetProperty("range").GetProperty("to").GetString()
             .ShouldBe(logEvent.Timestamp.AddMinutes(1).ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture));
-        notification.Message.Length.ShouldBeLessThanOrEqualTo(NotificationMessage.MaxLength);
+        ReadMessageText(notification.Message).EnumerateRunes().Count().ShouldBeLessThanOrEqualTo(NotificationMessage.MaxLength);
     }
 
     [Theory(DisplayName = "Compose log event should preserve the record UID when fields or links exceed message budget")]
@@ -1298,7 +1424,7 @@ public sealed class TelegramNotificationComposerTests(IntegrationTestFixture fix
             scope.ServiceProvider.GetRequiredService<ITopicRouter>(),
             Options.Create(new VictoriaLogsOptions { GrafanaLogsUrl = "https://grafana.example/" + new string('a', logsUrlPadding) }));
         const string recordUid = "550e8400-e29b-41d4-a716-446655440000";
-        var fields = Enumerable.Range(1, 12).ToDictionary(index => $"Detail{index:D2}", _ => new string('x', 1000));
+        var fields = Enumerable.Range(1, 12).ToDictionary(index => $"Detail{index:D2}", _ => new string('x', 10000));
         fields["log.record.uid"] = recordUid;
         var logEvent = CreateLogEvent(fields: fields);
 
@@ -1307,7 +1433,7 @@ public sealed class TelegramNotificationComposerTests(IntegrationTestFixture fix
         var decoded = WebUtility.HtmlDecode(notification.Message).ReplaceLineEndings("\n");
         decoded.ShouldContain($"\"log.record.uid\": \"{recordUid}\"");
         decoded.ShouldContain("… (12 fields omitted)");
-        notification.Message.Length.ShouldBeLessThanOrEqualTo(NotificationMessage.MaxLength);
+        ReadMessageText(notification.Message).EnumerateRunes().Count().ShouldBeLessThanOrEqualTo(NotificationMessage.MaxLength);
         var start = decoded.IndexOf("fields:\n", StringComparison.Ordinal) + "fields:\n".Length;
         var end = decoded.IndexOf("\n… (", start, StringComparison.Ordinal);
         using var json = JsonDocument.Parse(decoded[start..end]);
@@ -1348,7 +1474,7 @@ public sealed class TelegramNotificationComposerTests(IntegrationTestFixture fix
         decoded.ShouldNotContain("🔎");
         decoded.ShouldContain($"\"log.record.uid\": \"{ids[0]}\"");
         decoded.ShouldContain($"At least <b>{recordCount} matching events</b>");
-        notification.Message.Length.ShouldBeLessThanOrEqualTo(NotificationMessage.MaxLength);
+        ReadMessageText(notification.Message).EnumerateRunes().Count().ShouldBeLessThanOrEqualTo(NotificationMessage.MaxLength);
     }
 
     [Fact(DisplayName = "Compose log event should use the source fallback without a trace when group ids are incomplete")]

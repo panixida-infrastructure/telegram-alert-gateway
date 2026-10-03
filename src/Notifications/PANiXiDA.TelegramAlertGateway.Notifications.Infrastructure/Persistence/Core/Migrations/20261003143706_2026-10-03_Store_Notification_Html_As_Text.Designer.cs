@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using PANiXiDA.TelegramAlertGateway.Notifications.Infrastructure.Persistence.Core;
@@ -11,9 +12,11 @@ using PANiXiDA.TelegramAlertGateway.Notifications.Infrastructure.Persistence.Cor
 namespace PANiXiDA.TelegramAlertGateway.Notifications.Infrastructure.Persistence.Core.Migrations
 {
     [DbContext(typeof(NotificationsWriteDbContext))]
-    partial class NotificationsWriteDbContextModelSnapshot : ModelSnapshot
+    [Migration("20261003143706_2026-10-03_Store_Notification_Html_As_Text")]
+    partial class _20261003_Store_Notification_Html_As_Text
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder

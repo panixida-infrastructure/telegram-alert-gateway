@@ -10,6 +10,10 @@ and sends messages through `Telegram.Bot`.
   `POST /api/v1/webhooks/alertmanager` with a bearer token.
 - Metric alerts preserve `firing` and `resolved` states. Large groups are split into
   multiple Telegram messages; alerts are never silently omitted.
+- The limit is 4096 Unicode characters in the rendered text. HTML tags, escaped
+  entities and hidden link URLs do not consume extra text space. Full alerts are
+  tried first; metric alerts move intact to the next page and only an individually
+  oversized alert is shortened. Stored HTML uses PostgreSQL `text`.
 - Metric alerts show separate endpoint (`http_url`) and instance (`instance` or
   `service_instance_id`) lines when both are present. HTTP(S) URLs link to their
   origin without credentials, path or query. Bare instance addresses link via
@@ -19,12 +23,12 @@ and sends messages through `Telegram.Bot`.
 - Each metric alert uses a `Grafana` link from `dashboard_url` (or `logs_url`),
   preserving the rule's panel, time range and URL-encoded filters. Without these
   annotations, `MetricAlerts:GrafanaDashboardUrl` supplies the overview; an internal
-  generator URL is not presented as Grafana. URLs are never truncated: invalid
-  links or links over the 1000-character HTML budget are omitted.
+  generator URL is not presented as Grafana. Valid links are retained without
+  truncating their URLs; invalid links are omitted.
 - `MetricAlerts:AlertmanagerUrl` overrides the webhook's internal `externalURL`.
   Production opens Grafana's active notifications with the external `Alertmanager`
   datasource selected. An empty setting retains the webhook URL when it is a valid
-  HTTP(S) link within the 350-character HTML footer budget.
+  HTTP(S) link.
 - The gateway polls completed VictoriaLogs windows for error events. Repeated copies
   of one normalized error are combined into one message with an `At least N matching
   events` count and explicit window boundaries. Copies received through multiple
@@ -44,7 +48,12 @@ and sends messages through `Telegram.Bot`.
   Truncated fields report the exact omitted count, including when the entire fields
   block is removed. Exception metadata rendered separately is excluded from that count.
   `log.record.uid` is prioritized in `fields`; collector-generated UUIDs remain
-  copyable even when the final message budget requires dropping links and other fields.
+  copyable when other fields are omitted. Available Log/Logs/Trace links are retained.
+  In oversized logs, header and links are reserved first; a long message initially
+  receives up to half the remaining space when details exist. Exceptions and fields
+  share the rest, transferring unused space between blocks and back to the message.
+  Whole fields are omitted without breaking JSON. Exception types/messages take
+  precedence over long stacks. There are no fixed per-block character caps.
   Explicit `exception.hresult` (a signed 32-bit decimal integer) and
   `exception.source` fields are rendered as optional `HResult` and `Source` in
   `exceptions`, without duplication in `fields`. Invalid HRESULT values stay in
@@ -55,16 +64,16 @@ and sends messages through `Telegram.Bot`.
   `AggregateException` branches (siblings keep the same depth). Each entry has its
   own type, message and stack. Outer `HResult` and `Source` are not copied to inner
   exceptions. Unsupported or incomplete formats retain the original stack text.
-- Nested exceptions remain in one Telegram message and one copyable block. Their
-  message and stack budgets are shared. At most five entries are displayed; longer
-  trees keep the first four and the last entry, with an explicit omitted count.
+- Nested exceptions remain in one Telegram message and one copyable block. All
+  entries are shown when they fit; oversized trees retain the first entries and
+  the last cause, with an explicit omitted count. A minimal single-entry budget
+  retains the outer exception.
   Parsing is bounded to 128K UTF-16 code units, 64 entries and depth 32; inputs beyond these limits
   use the original-text fallback. No nested causes are inferred from plain errors.
 - In single-event alerts, valid 16- or 32-digit hexadecimal trace IDs have a `Trace`
   link to the `victoriatraces` Jaeger
   datasource in Grafana Explore, using the configured Grafana Logs URL and log window.
   Missing/invalid Grafana configuration or trace IDs retain the plain trace ID.
-  If the final message budget requires dropping links, the trace ID remains as text.
 - Small groups include their IDs directly in the URL. Larger groups persist an
   immutable membership snapshot in VictoriaLogs before queueing the notification;
   the link uses `in(subquery)` to select those IDs without an oversized URL. These
