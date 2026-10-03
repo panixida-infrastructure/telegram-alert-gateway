@@ -95,6 +95,7 @@ public sealed class TelegramNotificationComposerTests(IntegrationTestFixture fix
     }
 
     [Theory(DisplayName = "Compose metric alerts should omit unusable link when url is invalid or over budget")]
+    [InlineData("")]
     [InlineData("file:///C:/private")]
     [InlineData("javascript:alert(1)")]
     [InlineData("https://grafana.example/")]
@@ -111,9 +112,10 @@ public sealed class TelegramNotificationComposerTests(IntegrationTestFixture fix
             Annotations = new Dictionary<string, string> { ["dashboard_url"] = url }
         };
 
-        var message = composer.ComposeMetricAlerts("firing", "", [alert], DateTimeOffset.UtcNow).Single().Message;
+        var message = composer.ComposeMetricAlerts("firing", "https://alertmanager.example", [alert], DateTimeOffset.UtcNow).Single().Message;
 
-        message.ShouldNotContain("href=");
+        message.ShouldNotContain(">Grafana</a>");
+        message.ShouldContain($"{Environment.NewLine}{Environment.NewLine}🔗 <a href=\"https://alertmanager.example\">Alertmanager</a>");
         message.ShouldContain("invalid-link");
         message.Length.ShouldBeLessThanOrEqualTo(NotificationMessage.MaxLength);
     }
