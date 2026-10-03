@@ -82,10 +82,17 @@ public sealed class TelegramNotificationComposerTests(IntegrationTestFixture fix
     }
 
     [Theory(DisplayName = "Compose metric alerts should identify target when endpoint or instance labels are available")]
-    [InlineData("https://demo:secret@example.com/health?token=secret", "collector:8888", "", "🌐 example.com:443")]
-    [InlineData("http://example.com:8080/health", "", "", "🌐 example.com:8080")]
-    [InlineData("https://[2001:db8::1]:8443/health", "", "", "🌐 [2001:db8::1]:8443")]
-    [InlineData("", "example.com:9100", "worker-1", "🖥 Instance: example.com:9100")]
+    [InlineData("https://demo:secret@example.com/health?token=secret", "collector:8888", "", "🌐 <a href=\"https://example.com/\">example.com:443</a>\n🖥 Instance: collector:8888")]
+    [InlineData("http://example.com:8080/health", "", "", "🌐 <a href=\"http://example.com:8080/\">example.com:8080</a>")]
+    [InlineData("https://[2001:db8::1]:8443/health", "", "", "🌐 <a href=\"https://[2001:db8::1]:8443/\">[2001:db8::1]:8443</a>")]
+    [InlineData("", "example.com:9100", "worker-1", "🖥 Instance: <a href=\"http://example.com:9100/\">example.com:9100</a>")]
+    [InlineData("https://example.com", "worker-1:8080", "", "🌐 <a href=\"https://example.com/\">example.com:443</a>\n🖥 Instance: <a href=\"http://worker-1:8080/\">worker-1:8080</a>")]
+    [InlineData("https://example.com", "worker-1:8081", "", "🌐 <a href=\"https://example.com/\">example.com:443</a>\n🖥 Instance: <a href=\"http://worker-1:8081/\">worker-1:8081</a>")]
+    [InlineData("", "https://demo:secret@worker-1:9443/path?token=secret", "", "🖥 Instance: <a href=\"https://worker-1:9443/\">worker-1:9443</a>")]
+    [InlineData("", "worker-1:443", "", "🖥 Instance: <a href=\"https://worker-1/\">worker-1:443</a>")]
+    [InlineData("", "db:5432", "", "🖥 Instance: db:5432")]
+    [InlineData("", "9100", "", "🖥 Instance: 9100")]
+    [InlineData("", "worker:9100/path", "", "🖥 Instance: worker:9100/path")]
     [InlineData("file:///private", "worker<&>:9100", "", "🖥 Instance: worker&lt;&amp;&gt;:9100")]
     [InlineData("", "", "worker-1", "🖥 Instance: worker-1")]
     [InlineData("", "", "", "")]
@@ -119,10 +126,43 @@ public sealed class TelegramNotificationComposerTests(IntegrationTestFixture fix
         }
         else
         {
-            targetLines.ShouldBe([expectedTarget]);
+            targetLines.ShouldBe(expectedTarget.Split('\n'));
         }
         message.ShouldNotContain("secret");
         message.ShouldNotContain("file:///private");
+    }
+
+    [Fact(DisplayName = "Compose metric alerts should keep target as text when link exceeds target budget")]
+    public void ComposeMetricAlerts_Should_KeepTargetAsText_When_LinkExceedsTargetBudget()
+    {
+        using var scope = Fixture.CreateScope();
+        var composer = scope.ServiceProvider.GetRequiredService<INotificationComposer>();
+        var alert = CreateAlert("tests", "long-target");
+        alert = alert with
+        {
+            Labels = new Dictionary<string, string>(alert.Labels)
+            {
+                ["http_url"] = "https://" + string.Concat(Enumerable.Repeat("longlabel.", 20)) + "example.com/health"
+            }
+        };
+
+        var message = composer.ComposeMetricAlerts("firing", "", [alert], DateTimeOffset.UtcNow).Single().Message;
+
+        message.ShouldContain("🌐 longlabel.");
+        message.ShouldNotContain("<a ");
+        message.Length.ShouldBeLessThanOrEqualTo(NotificationMessage.MaxLength);
+    }
+
+    [Fact(DisplayName = "Compose metric alerts should count each status when group contains firing and resolved alerts")]
+    public void ComposeMetricAlerts_Should_CountEachStatus_When_GroupContainsFiringAndResolvedAlerts()
+    {
+        using var scope = Fixture.CreateScope();
+        var composer = scope.ServiceProvider.GetRequiredService<INotificationComposer>();
+        var alerts = new[] { CreateAlert("tests", "first"), CreateAlert("tests", "second") with { Status = "resolved" } };
+
+        var message = composer.ComposeMetricAlerts("firing", "", alerts, DateTimeOffset.UtcNow).Single().Message;
+
+        message.ShouldContain("📊 Firing: <b>1</b> | Resolved: <b>1</b>");
     }
 
     [Fact(DisplayName = "Compose metric alerts should use overview when dashboard is missing")]

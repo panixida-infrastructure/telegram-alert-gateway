@@ -10,9 +10,12 @@ and sends messages through `Telegram.Bot`.
   `POST /api/v1/webhooks/alertmanager` with a bearer token.
 - Metric alerts preserve `firing` and `resolved` states. Large groups are split into
   multiple Telegram messages; alerts are never silently omitted.
-- Metric alerts show the host and port from `http_url`, without URL credentials,
-  path or query. Otherwise they show `instance` or `service_instance_id`, when
-  present. A public domain is not inferred from a service name or instance ID.
+- Metric alerts show separate endpoint (`http_url`) and instance (`instance` or
+  `service_instance_id`) lines when both are present. HTTP(S) URLs link to their
+  origin without credentials, path or query. Bare instance addresses link via
+  HTTP on ports 80/8080/8081/9100 and HTTPS on 443/8443; other values remain text.
+  Ports are preserved so different instances on the same host remain distinct.
+  Each group shows its firing and resolved counts, including on paginated messages.
 - Each metric alert uses a `Grafana` link from `dashboard_url` (or `logs_url`),
   preserving the rule's panel, time range and URL-encoded filters. Without these
   annotations, `MetricAlerts:GrafanaDashboardUrl` supplies the overview; an internal
