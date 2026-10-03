@@ -39,7 +39,7 @@ public sealed class TelegramNotificationComposerTests(IntegrationTestFixture fix
             Annotations = new Dictionary<string, string>
             {
                 ["summary"] = longDescription ? new string('s', 600) : "Slow route",
-                ["description"] = new string('d', longDescription ? 900 : 10),
+                ["description"] = longDescription ? new string('d', 900) : "Route <api> & p95 > 2s",
                 ["dashboard_url"] = dashboardUrl
             }
         };
@@ -66,11 +66,16 @@ public sealed class TelegramNotificationComposerTests(IntegrationTestFixture fix
         decoded.ShouldContain($">Grafana</a>{Environment.NewLine}🔗 <a href=\"{alertmanagerUrl}\">");
         decoded.ShouldNotContain("Open details");
         decoded.ShouldNotContain("alertmanager-0");
+        message.ShouldNotContain("<pre>");
         message.ShouldContain("&amp;");
         message.Length.ShouldBeLessThanOrEqualTo(NotificationMessage.MaxLength);
         if (longDescription)
         {
             message.ShouldContain("Description omitted");
+        }
+        else
+        {
+            message.ShouldContain($"📖 Route &lt;api&gt; &amp; p95 &gt; 2s{Environment.NewLine}");
         }
     }
 

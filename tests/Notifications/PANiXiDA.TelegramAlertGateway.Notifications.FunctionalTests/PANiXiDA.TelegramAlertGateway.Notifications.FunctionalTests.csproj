@@ -13,6 +13,7 @@
 
     <ItemGroup>
         <ProjectReference Include="..\..\..\src\PANiXiDA.TelegramAlertGateway.Host\PANiXiDA.TelegramAlertGateway.Host.csproj" />
+        <ProjectReference Include="..\..\..\src\Notifications\PANiXiDA.TelegramAlertGateway.Notifications.Application\PANiXiDA.TelegramAlertGateway.Notifications.Application.csproj" />
         <ProjectReference Include="..\..\..\src\Notifications\PANiXiDA.TelegramAlertGateway.Notifications.Domain\PANiXiDA.TelegramAlertGateway.Notifications.Domain.csproj" />
         <ProjectReference Include="..\..\..\src\Notifications\PANiXiDA.TelegramAlertGateway.Notifications.Infrastructure\PANiXiDA.TelegramAlertGateway.Notifications.Infrastructure.csproj" />
         <ProjectReference Include="..\..\..\src\Notifications\PANiXiDA.TelegramAlertGateway.Notifications.Presentation\PANiXiDA.TelegramAlertGateway.Notifications.Presentation.csproj" />
