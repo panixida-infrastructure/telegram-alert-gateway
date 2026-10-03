@@ -22,7 +22,7 @@ internal sealed class TelegramNotificationComposer(
     IOptions<VictoriaLogsOptions> victoriaLogsOptions)
     : INotificationComposer
 {
-    private const string Separator = "────────────";
+    private const string Separator = "• • •";
     private const string ResolvedStatus = "resolved";
     private const string LinkOpeningTag = "🔗 <a href=\"";
     private const string PreformattedTextOpeningTag = "<pre>";
@@ -614,7 +614,7 @@ internal sealed class TelegramNotificationComposer(
             ? externalUrl
             : _metricAlertsOptions.AlertmanagerUrl;
         return IsHttpUrl(url) && Html(url).Length <= 350
-            ? $"{Environment.NewLine}{LinkOpeningTag}{Html(url)}\">Alertmanager</a>"
+            ? $"{LinkOpeningTag}{Html(url)}\">Alertmanager</a>"
             : string.Empty;
     }
 
@@ -651,7 +651,7 @@ internal sealed class TelegramNotificationComposer(
 
         if (IsHttpUrl(dashboardUrl) && Html(dashboardUrl).Length <= MaxMetricLinkLength)
         {
-            builder.Append(LinkOpeningTag)
+            builder.AppendLine().Append(LinkOpeningTag)
                 .Append(Html(dashboardUrl))
                 .AppendLine("\">Grafana</a>");
         }
@@ -690,7 +690,7 @@ internal sealed class TelegramNotificationComposer(
 
         if (IsHttpUrl(dashboardUrl) && Html(dashboardUrl).Length <= MaxMetricLinkLength)
         {
-            builder.Append(LinkOpeningTag)
+            builder.AppendLine().Append(LinkOpeningTag)
                 .Append(Html(dashboardUrl))
                 .AppendLine("\">Grafana</a>");
         }
@@ -711,7 +711,7 @@ internal sealed class TelegramNotificationComposer(
 
         foreach (var block in blocks)
         {
-            var requiredLength = block.Length + (current.Length == 0 ? 0 : Separator.Length + 2);
+            var requiredLength = block.Length + (current.Length == 0 ? 0 : Separator.Length + (3 * Environment.NewLine.Length));
             if (current.Length > 0 && current.Length + requiredLength > PageContentLimit)
             {
                 pages.Add(current.ToString());
@@ -720,7 +720,7 @@ internal sealed class TelegramNotificationComposer(
 
             if (current.Length > 0)
             {
-                current.AppendLine().AppendLine(Separator);
+                current.AppendLine().AppendLine(Separator).AppendLine();
             }
 
             current.Append(block);

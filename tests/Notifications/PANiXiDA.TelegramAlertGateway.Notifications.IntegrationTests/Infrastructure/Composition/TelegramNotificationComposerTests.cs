@@ -62,6 +62,8 @@ public sealed class TelegramNotificationComposerTests(IntegrationTestFixture fix
 
         decoded.ShouldContain($"href=\"{dashboardUrl}\">Grafana</a>");
         decoded.ShouldContain($"href=\"{alertmanagerUrl}\">Alertmanager</a>");
+        decoded.ShouldContain($"{Environment.NewLine}{Environment.NewLine}🔗 <a href=\"{dashboardUrl}\">");
+        decoded.ShouldContain($">Grafana</a>{Environment.NewLine}🔗 <a href=\"{alertmanagerUrl}\">");
         decoded.ShouldNotContain("Open details");
         decoded.ShouldNotContain("alertmanager-0");
         message.ShouldContain("&amp;");
@@ -181,6 +183,8 @@ public sealed class TelegramNotificationComposerTests(IntegrationTestFixture fix
         notifications.ShouldAllBe(item => item.Topic == "tactical-heroes");
         notifications.ShouldAllBe(item => item.Message.Length <= NotificationMessage.MaxLength);
         rendered.ShouldNotContain("---");
+        rendered.ShouldNotContain("────────────");
+        rendered.ShouldContain($"{Environment.NewLine}• • •{Environment.NewLine}{Environment.NewLine}🔥");
         foreach (var alert in alerts)
         {
             rendered.ShouldContain(alert.Labels["alertname"]);
