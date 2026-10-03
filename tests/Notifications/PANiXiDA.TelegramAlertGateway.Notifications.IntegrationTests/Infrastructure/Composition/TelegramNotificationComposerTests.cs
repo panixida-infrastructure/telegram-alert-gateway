@@ -845,8 +845,8 @@ public sealed class TelegramNotificationComposerTests(IntegrationTestFixture fix
 
         var notification = composer.ComposeLogEvent(logEvent.Timestamp, logEvent);
 
-        var traceLine = notification.Message.Split('\n').Single(line => line.StartsWith("🔎 trace:", StringComparison.Ordinal));
-        traceLine.ShouldContain($"\">{traceId}</a>");
+        var traceLine = notification.Message.Split('\n').Single(line => line.StartsWith("🔎 ", StringComparison.Ordinal));
+        traceLine.ShouldContain("\">Trace</a>");
         var hrefStart = traceLine.IndexOf("href=\"", StringComparison.Ordinal) + "href=\"".Length;
         var hrefEnd = traceLine.IndexOf('"', hrefStart);
         var uri = new Uri(WebUtility.HtmlDecode(traceLine[hrefStart..hrefEnd]));
@@ -887,7 +887,7 @@ public sealed class TelegramNotificationComposerTests(IntegrationTestFixture fix
 
         var notification = composer.ComposeLogEvent(logEvent.Timestamp, logEvent);
 
-        var traceLine = notification.Message.Split('\n').Single(line => line.StartsWith("🔎 trace:", StringComparison.Ordinal));
+        var traceLine = notification.Message.Split('\n').Single(line => line.StartsWith("🔎 ", StringComparison.Ordinal));
         traceLine.ShouldNotContain("<a ");
         WebUtility.HtmlDecode(traceLine).ShouldContain($"<code>{traceId}</code>");
         notification.Message.Length.ShouldBeLessThanOrEqualTo(NotificationMessage.MaxLength);
@@ -1020,16 +1020,15 @@ public sealed class TelegramNotificationComposerTests(IntegrationTestFixture fix
         var logEvent = CreateLogEvent(fields: new Dictionary<string, string> { ["log.record.uid"] = recordUid })
             with
         {
-            StreamId = streamId,
-            Occurrences = 3
+            StreamId = streamId
         };
 
         var notification = composer.ComposeLogEvent(logEvent.Timestamp, logEvent);
 
         var decoded = WebUtility.HtmlDecode(notification.Message);
         decoded.ShouldContain("\"log.record.uid\":");
-        decoded.ShouldContain("Open this log</a>");
-        decoded.ShouldContain("At least <b>3 matching events</b>");
+        decoded.ShouldContain(">Log</a>");
+        decoded.ShouldNotContain("matching events");
         decoded.ShouldNotContain("Logs for this source and window");
         var hrefStart = decoded.IndexOf("href=\"", StringComparison.Ordinal) + "href=\"".Length;
         var hrefEnd = decoded.IndexOf('"', hrefStart);
@@ -1074,6 +1073,61 @@ public sealed class TelegramNotificationComposerTests(IntegrationTestFixture fix
         var end = decoded.IndexOf("\n… (", start, StringComparison.Ordinal);
         using var json = JsonDocument.Parse(decoded[start..end]);
         json.RootElement.GetProperty("log.record.uid").GetString().ShouldBe(recordUid);
+    }
+
+    [Theory(DisplayName = "Compose log event should retain the group link without a trace when all record ids are available")]
+    [InlineData(3)]
+    [InlineData(10)]
+    [InlineData(10000)]
+    public void ComposeLogEvent_Should_RetainGroupLinkWithoutTrace_When_AllRecordIdsAreAvailable(int recordCount)
+    {
+        using var scope = Fixture.CreateScope();
+        var composer = new TelegramNotificationComposer(
+            scope.ServiceProvider.GetRequiredService<ITopicRouter>(),
+            Options.Create(new VictoriaLogsOptions { GrafanaLogsUrl = "https://grafana.panixida.ru/explore" }));
+        var ids = Enumerable.Range(0, recordCount).Select(_ => Guid.NewGuid().ToString()).ToArray();
+        var logEvent = CreateLogEvent("0123456789abcdef0123456789abcdef", new Dictionary<string, string>
+        {
+            ["log.record.uid"] = ids[0],
+            ["Detail"] = new string('x', 5000),
+            ["exception.message"] = new string('x', 5000)
+        }) with
+        {
+            Occurrences = recordCount,
+            RecordUids = ids,
+            Message = new string('x', 5000),
+            ExceptionType = "System.InvalidOperationException",
+            StackTrace = new string('x', 5000)
+        };
+
+        var notification = composer.ComposeLogEvent(logEvent.Timestamp, logEvent);
+
+        var decoded = WebUtility.HtmlDecode(notification.Message);
+        decoded.ShouldContain(">Logs</a>");
+        decoded.ShouldNotContain("🔎");
+        decoded.ShouldContain($"\"log.record.uid\": \"{ids[0]}\"");
+        decoded.ShouldContain($"At least <b>{recordCount} matching events</b>");
+        notification.Message.Length.ShouldBeLessThanOrEqualTo(NotificationMessage.MaxLength);
+    }
+
+    [Fact(DisplayName = "Compose log event should use the source fallback without a trace when group ids are incomplete")]
+    public void ComposeLogEvent_Should_UseSourceFallbackWithoutTrace_When_GroupIdsAreIncomplete()
+    {
+        using var scope = Fixture.CreateScope();
+        var composer = scope.ServiceProvider.GetRequiredService<INotificationComposer>();
+        var logEvent = CreateLogEvent("0123456789abcdef", new Dictionary<string, string> { ["log.record.uid"] = "sample-only" })
+            with
+        { Occurrences = 3, StreamId = "0000007b000001c850d9950ea6196b1a4812081265faa1c7" };
+
+        var notification = composer.ComposeLogEvent(logEvent.Timestamp, logEvent);
+
+        notification.Message.ShouldContain(">Logs for this source and window</a>");
+        notification.Message.ShouldNotContain("🔎");
+        var parameters = System.Web.HttpUtility.ParseQueryString(new Uri(WebUtility.HtmlDecode(
+            notification.Message.Split("href=\"", StringSplitOptions.None)[1].Split('"')[0])).Query);
+        using var panes = JsonDocument.Parse(parameters["panes"].ShouldNotBeNull());
+        panes.RootElement.GetProperty("logs").GetProperty("queries")[0].GetProperty("expr").GetString()
+            .ShouldBe($"_stream_id:{logEvent.StreamId}");
     }
 
     private static LogEvent CreateLogEvent(string? traceId = null, IReadOnlyDictionary<string, string>? fields = null)

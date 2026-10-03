@@ -14,4 +14,5 @@ public sealed record LogEvent(
     IReadOnlyDictionary<string, string> Fields,
     string Fingerprint,
     int Occurrences,
-    string? StreamId = null);
+    string? StreamId = null,
+    IReadOnlyList<string>? RecordUids = null);

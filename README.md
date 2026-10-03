@@ -16,10 +16,12 @@ and sends messages through `Telegram.Bot`.
   ingestion paths are not counted twice; different errors remain separate messages.
 - A log message includes service, Kubernetes namespace/container, error text,
   exception type, the top of the stack trace, trace id, generic structured fields,
-  and a Grafana Logs link matching `log.record.uid` exactly within the aggregation
-  window. Records without that ID retain the source stream/window link. Repeated
-  errors still form one alert; its ID and link identify the representative record
-  shown in the message. Values whose field names indicate secrets or credentials
+  and a Grafana `Log` link matching `log.record.uid` exactly within the aggregation
+  window. Grouped alerts have a `Logs` link selecting all IDs counted in that group
+  with `in(...)`, and no trace link. Message, exceptions, fields and the singular
+  `log.record.uid` describe the representative record, not every member of the group.
+  Records or groups without complete IDs retain the source stream/window link.
+  Values whose field names indicate secrets or credentials
   are redacted before Telegram rendering. Optional sections are reduced before the
   message can exceed Telegram's delivery limit.
 - The copyable log block contains `message`, then `exceptions`, then `fields`.
@@ -42,10 +44,18 @@ and sends messages through `Telegram.Bot`.
   trees keep the first four and the last entry, with an explicit omitted count.
   Parsing is bounded to 128K UTF-16 code units, 64 entries and depth 32; inputs beyond these limits
   use the original-text fallback. No nested causes are inferred from plain errors.
-- Valid 16- or 32-digit hexadecimal trace IDs link to the `victoriatraces` Jaeger
+- In single-event alerts, valid 16- or 32-digit hexadecimal trace IDs have a `Trace`
+  link to the `victoriatraces` Jaeger
   datasource in Grafana Explore, using the configured Grafana Logs URL and log window.
   Missing/invalid Grafana configuration or trace IDs retain the plain trace ID.
   If the final message budget requires dropping links, the trace ID remains as text.
+- Small groups include their IDs directly in the URL. Larger groups persist an
+  immutable membership snapshot in VictoriaLogs before queueing the notification;
+  the link uses `in(subquery)` to select those IDs without an oversized URL. These
+  informational records use service `telegram-alert-gateway` (excluded from alerts),
+  the same timestamp window and retention as the original logs. Retries preserve
+  the membership, and storage failures prevent advancing the polling checkpoint.
+  The VictoriaLogs credentials must allow both query and `/insert/jsonline` requests.
 - An idempotency key and a PostgreSQL unique constraint suppress webhook retries and
   repeated processing of the same log window.
 - Telegram traffic prefers the WireGuard-backed `telegram-vpn` HTTP proxy and falls
