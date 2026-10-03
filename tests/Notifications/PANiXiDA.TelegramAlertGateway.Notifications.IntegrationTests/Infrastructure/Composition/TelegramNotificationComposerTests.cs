@@ -62,6 +62,8 @@ public sealed class TelegramNotificationComposerTests(IntegrationTestFixture fix
 
         decoded.ShouldContain($"href=\"{dashboardUrl}\">Grafana</a>");
         decoded.ShouldContain($"href=\"{alertmanagerUrl}\">Alertmanager</a>");
+        decoded.ShouldContain($"{Environment.NewLine}{Environment.NewLine}🔗 <a href=\"{dashboardUrl}\">");
+        decoded.ShouldContain($">Grafana</a>{Environment.NewLine}🔗 <a href=\"{alertmanagerUrl}\">");
         decoded.ShouldNotContain("Open details");
         decoded.ShouldNotContain("alertmanager-0");
         message.ShouldContain("&amp;");
@@ -93,6 +95,7 @@ public sealed class TelegramNotificationComposerTests(IntegrationTestFixture fix
     }
 
     [Theory(DisplayName = "Compose metric alerts should omit unusable link when url is invalid or over budget")]
+    [InlineData("")]
     [InlineData("file:///C:/private")]
     [InlineData("javascript:alert(1)")]
     [InlineData("https://grafana.example/")]
@@ -109,9 +112,10 @@ public sealed class TelegramNotificationComposerTests(IntegrationTestFixture fix
             Annotations = new Dictionary<string, string> { ["dashboard_url"] = url }
         };
 
-        var message = composer.ComposeMetricAlerts("firing", "", [alert], DateTimeOffset.UtcNow).Single().Message;
+        var message = composer.ComposeMetricAlerts("firing", "https://alertmanager.example", [alert], DateTimeOffset.UtcNow).Single().Message;
 
-        message.ShouldNotContain("href=");
+        message.ShouldNotContain(">Grafana</a>");
+        message.ShouldContain($"{Environment.NewLine}{Environment.NewLine}🔗 <a href=\"https://alertmanager.example\">Alertmanager</a>");
         message.ShouldContain("invalid-link");
         message.Length.ShouldBeLessThanOrEqualTo(NotificationMessage.MaxLength);
     }
@@ -181,6 +185,8 @@ public sealed class TelegramNotificationComposerTests(IntegrationTestFixture fix
         notifications.ShouldAllBe(item => item.Topic == "tactical-heroes");
         notifications.ShouldAllBe(item => item.Message.Length <= NotificationMessage.MaxLength);
         rendered.ShouldNotContain("---");
+        rendered.ShouldNotContain("────────────");
+        rendered.ShouldContain($"{Environment.NewLine}• • •{Environment.NewLine}{Environment.NewLine}🔥");
         foreach (var alert in alerts)
         {
             rendered.ShouldContain(alert.Labels["alertname"]);

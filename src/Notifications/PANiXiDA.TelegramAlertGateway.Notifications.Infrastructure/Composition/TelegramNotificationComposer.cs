@@ -22,7 +22,7 @@ internal sealed class TelegramNotificationComposer(
     IOptions<VictoriaLogsOptions> victoriaLogsOptions)
     : INotificationComposer
 {
-    private const string Separator = "────────────";
+    private const string Separator = "• • •";
     private const string ResolvedStatus = "resolved";
     private const string LinkOpeningTag = "🔗 <a href=\"";
     private const string PreformattedTextOpeningTag = "<pre>";
@@ -56,7 +56,6 @@ internal sealed class TelegramNotificationComposer(
         IReadOnlyList<AlertmanagerAlert> alerts,
         DateTimeOffset receivedAtUtc)
     {
-        var alertmanagerLink = BuildAlertmanagerLink(externalUrl);
         var result = new List<ComposedNotification>();
         var deliveryWindow = receivedAtUtc.UtcTicks / MetricDeliveryDeduplicationWindow.Ticks;
 
@@ -92,7 +91,7 @@ internal sealed class TelegramNotificationComposer(
                     .AppendLine(pageLabel)
                     .AppendLine()
                     .Append(pages[index])
-                    .Append(alertmanagerLink);
+                    .Append(BuildAlertmanagerLink(externalUrl, pages[index]));
 
                 var alertOccurrences = string.Join(
                     ',',
@@ -608,14 +607,20 @@ internal sealed class TelegramNotificationComposer(
             : length;
     }
 
-    private string BuildAlertmanagerLink(string externalUrl)
+    private string BuildAlertmanagerLink(string externalUrl, string pageContent)
     {
         var url = string.IsNullOrWhiteSpace(_metricAlertsOptions.AlertmanagerUrl)
             ? externalUrl
             : _metricAlertsOptions.AlertmanagerUrl;
-        return IsHttpUrl(url) && Html(url).Length <= 350
-            ? $"{Environment.NewLine}{LinkOpeningTag}{Html(url)}\">Alertmanager</a>"
-            : string.Empty;
+        if (!IsHttpUrl(url) || Html(url).Length > 350)
+        {
+            return string.Empty;
+        }
+
+        var spacing = pageContent.EndsWith($"</a>{Environment.NewLine}", StringComparison.Ordinal)
+            ? string.Empty
+            : Environment.NewLine;
+        return $"{spacing}{LinkOpeningTag}{Html(url)}\">Alertmanager</a>";
     }
 
     private string BuildMetricAlertBlock(AlertmanagerAlert alert)
@@ -651,7 +656,7 @@ internal sealed class TelegramNotificationComposer(
 
         if (IsHttpUrl(dashboardUrl) && Html(dashboardUrl).Length <= MaxMetricLinkLength)
         {
-            builder.Append(LinkOpeningTag)
+            builder.AppendLine().Append(LinkOpeningTag)
                 .Append(Html(dashboardUrl))
                 .AppendLine("\">Grafana</a>");
         }
@@ -690,7 +695,7 @@ internal sealed class TelegramNotificationComposer(
 
         if (IsHttpUrl(dashboardUrl) && Html(dashboardUrl).Length <= MaxMetricLinkLength)
         {
-            builder.Append(LinkOpeningTag)
+            builder.AppendLine().Append(LinkOpeningTag)
                 .Append(Html(dashboardUrl))
                 .AppendLine("\">Grafana</a>");
         }
@@ -711,7 +716,7 @@ internal sealed class TelegramNotificationComposer(
 
         foreach (var block in blocks)
         {
-            var requiredLength = block.Length + (current.Length == 0 ? 0 : Separator.Length + 2);
+            var requiredLength = block.Length + (current.Length == 0 ? 0 : Separator.Length + (3 * Environment.NewLine.Length));
             if (current.Length > 0 && current.Length + requiredLength > PageContentLimit)
             {
                 pages.Add(current.ToString());
@@ -720,7 +725,7 @@ internal sealed class TelegramNotificationComposer(
 
             if (current.Length > 0)
             {
-                current.AppendLine().AppendLine(Separator);
+                current.AppendLine().AppendLine(Separator).AppendLine();
             }
 
             current.Append(block);
