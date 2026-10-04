@@ -18,6 +18,12 @@ public sealed class HostConfigurationTests(FunctionalTestFixture fixture)
     [InlineData("envoy", "envoy-gateway-system", null, "core-platform")]
     [InlineData("envoy-gateway", "envoy-gateway-system", null, "core-platform")]
     [InlineData("envoy", "envoy-gateway-system", "tests", "tests")]
+    [InlineData("api", "kargo", null, "core-platform")]
+    [InlineData("controller", "kargo", null, "core-platform")]
+    [InlineData("management-controller", "kargo", null, "core-platform")]
+    [InlineData("webhooks-server", "kargo", null, "core-platform")]
+    [InlineData("api", "kargo", "tests", "tests")]
+    [InlineData("api", "unknown-project", null, "unclassified")]
     public void Host_Should_RouteLogs_When_ServiceNamespaceAndOwnerAreProvided(
         string service,
         string namespaceName,
