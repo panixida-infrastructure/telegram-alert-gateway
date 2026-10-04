@@ -11,12 +11,16 @@ namespace PANiXiDA.TelegramAlertGateway.Notifications.FunctionalTests.Presentati
 public sealed class HostConfigurationTests(FunctionalTestFixture fixture)
     : FunctionalTestBase(fixture)
 {
-    [Theory(DisplayName = "Host should route quality logs when service and owner are provided")]
-    [InlineData("sonarqube", null, "core-platform")]
-    [InlineData("sonarqube", "tests", "tests")]
-    [InlineData("other-quality-service", null, "unclassified")]
-    public void Host_Should_RouteQualityLogs_When_ServiceAndOwnerAreProvided(
+    [Theory(DisplayName = "Host should route logs when service namespace and owner are provided")]
+    [InlineData("sonarqube", "quality", null, "core-platform")]
+    [InlineData("sonarqube", "quality", "tests", "tests")]
+    [InlineData("other-quality-service", "quality", null, "unclassified")]
+    [InlineData("envoy", "envoy-gateway-system", null, "core-platform")]
+    [InlineData("envoy-gateway", "envoy-gateway-system", null, "core-platform")]
+    [InlineData("envoy", "envoy-gateway-system", "tests", "tests")]
+    public void Host_Should_RouteLogs_When_ServiceNamespaceAndOwnerAreProvided(
         string service,
+        string namespaceName,
         string? owner,
         string expectedTopic)
     {
@@ -25,7 +29,7 @@ public sealed class HostConfigurationTests(FunctionalTestFixture fixture)
         var logEvent = new LogEvent(
             Timestamp: DateTimeOffset.UtcNow,
             Service: service,
-            Namespace: "quality",
+            Namespace: namespaceName,
             Container: service,
             Owner: owner,
             Severity: "error",
@@ -34,7 +38,7 @@ public sealed class HostConfigurationTests(FunctionalTestFixture fixture)
             StackTrace: null,
             TraceId: null,
             Fields: new Dictionary<string, string>(),
-            Fingerprint: "quality-error",
+            Fingerprint: "routing-error",
             Occurrences: 1);
 
         var notification = composer.ComposeLogEvent(logEvent.Timestamp, logEvent);
